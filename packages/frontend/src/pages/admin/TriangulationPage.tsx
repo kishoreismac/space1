@@ -224,6 +224,11 @@ function TriangulationWorkspace({
 
   return (
     <div className="space-y-6">
+      <AutoSeedBanner base={base} onSeeded={() => {
+        qc.invalidateQueries({ queryKey: ['blockers', campaignId] });
+        qc.invalidateQueries({ queryKey: ['candidates', campaignId] });
+      }} />
+
       <CandidatesPanel
         candidates={candidates.data}
         loading={candidates.isLoading}
@@ -799,6 +804,44 @@ function TextareaField({
       ) : (
         <p className="text-xs text-slate-400 italic">— not set —</p>
       )}
+    </div>
+  );
+}
+
+// ─── Auto-seed validated blockers from survey signals ─────────────────
+function AutoSeedBanner({ base, onSeeded }: { base: string; onSeeded: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState<{ created: number; totalRespondents: number } | null>(null);
+  const run = async () => {
+    if (!confirm('Auto-seed validated blockers from low survey dimensions, promoted themes and red journey steps? Existing blockers with matching titles are skipped.')) return;
+    setBusy(true);
+    try {
+      const r = await api<{ created: number; totalRespondents: number; blockers: { title: string; severity: string }[] }>(
+        `${base}/auto-seed`,
+        { method: 'POST', body: {} },
+      );
+      setLast({ created: r.created, totalRespondents: r.totalRespondents });
+      onSeeded();
+    } catch (e: any) {
+      alert(e?.message ?? 'Auto-seed failed');
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-center justify-between gap-4">
+      <div>
+        <div className="font-semibold text-sm text-emerald-900">Triangulate survey signals into blockers</div>
+        <div className="text-xs text-emerald-700 mt-0.5">
+          Pulls low-scoring dimensions, promoted themes and red journey steps and creates a Validated Blocker with linked signals for each.
+          {last && <span className="ml-2 font-medium">Last run: {last.created} new blockers from {last.totalRespondents} respondents.</span>}
+        </div>
+      </div>
+      <button
+        onClick={run}
+        disabled={busy}
+        className="text-sm px-4 py-2 rounded bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 whitespace-nowrap"
+      >
+        {busy ? 'Seeding…' : '✨ Auto-seed blockers'}
+      </button>
     </div>
   );
 }
