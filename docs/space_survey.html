@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPACE Developer Survey</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F5F2EC;--surface:#fff;--ink:#1C1917;--ink2:#44403C;
+  --border:#E2DDD6;--muted:#A8A29E;
+  --s:#0F766E;--sbg:#CCFBF1;--sdk:#065F46;
+  --p:#4F46E5;--pbg:#EDE9FE;--pdk:#3730A3;
+  --a:#D97706;--abg:#FEF3C7;--adk:#78350F;
+  --c:#DC2626;--cbg:#FEE2E2;--cdk:#991B1B;
+  --e:#2563EB;--ebg:#DBEAFE;--edk:#1D4ED8;
+  --gold:#92400E;--goldlt:#FEF3C7;
+  --red:#991B1B;--redlt:#FEE2E2;
+  --green:#166534;--greenlt:#DCFCE7;
+}
+html{scroll-behavior:smooth;font-size:15px}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);line-height:1.6;min-height:100vh}
+
+/* ── HEADER ── */
+.site-header{
+  background:linear-gradient(160deg,#1C1917 0%,#292524 60%,#1C1917 100%);
+  padding:3rem 2rem 2.5rem;text-align:center;position:relative;overflow:hidden;
+}
+.site-header::before{
+  content:'SPACE';position:absolute;top:-20px;left:50%;transform:translateX(-50%);
+  font-family:'Fraunces',serif;font-size:20rem;font-weight:700;
+  color:rgba(255,255,255,.025);pointer-events:none;white-space:nowrap;
+}
+.eyebrow{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:#5EEAD4;margin-bottom:1rem}
+.site-header h1{font-family:'Fraunces',serif;font-size:clamp(2rem,5vw,3.5rem);font-weight:700;color:#fff;line-height:1.1;margin-bottom:.8rem}
+.site-header h1 em{color:#FCD34D;font-style:italic}
+.site-header p{font-size:.95rem;color:rgba(255,255,255,.5);max-width:540px;margin:0 auto;line-height:1.7}
+.header-meta{display:flex;gap:20px;justify-content:center;margin-top:1.5rem;flex-wrap:wrap}
+.meta-badge{font-family:'DM Mono',monospace;font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.55)}
+.meta-badge strong{color:#5EEAD4}
+
+/* ── STICKY PROGRESS ── */
+.sticky-bar{
+  position:sticky;top:0;z-index:100;background:var(--ink);
+  padding:8px 1.5rem;display:flex;align-items:center;gap:12px;
+  border-bottom:2px solid #5EEAD4;
+}
+.prog-track{flex:1;height:5px;background:rgba(255,255,255,.12);border-radius:3px;overflow:hidden}
+.prog-fill{height:100%;background:linear-gradient(90deg,#0F766E,#5EEAD4);border-radius:3px;transition:width .4s ease;width:0%}
+.prog-text{font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,.4);flex-shrink:0;min-width:65px;text-align:right}
+.export-btns{display:flex;gap:6px}
+.exp-btn{
+  padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;font-family:'Outfit',sans-serif;
+  cursor:pointer;border:none;transition:all .15s;letter-spacing:.3px;
+}
+.exp-excel{background:#16A34A;color:#fff}.exp-excel:hover{background:#15803D}
+.exp-json{background:#2563EB;color:#fff}.exp-json:hover{background:#1D4ED8}
+.exp-csv{background:#D97706;color:#fff}.exp-csv:hover{background:#B45309}
+
+/* ── MAIN ── */
+main{max-width:800px;margin:0 auto;padding:2rem 1.5rem 5rem}
+
+/* ── CONTEXT CARD ── */
+.ctx-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:1.8rem;margin-bottom:2rem;
+  box-shadow:0 1px 4px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.05);
+}
+.ctx-title{font-family:'Fraunces',serif;font-size:1.1rem;font-weight:600;margin-bottom:1.2rem;padding-bottom:.8rem;border-bottom:1px solid var(--border)}
+.ctx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.field-group{margin-bottom:0}
+.field-label{display:block;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.field-input,.field-select{
+  width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;
+  font-family:'Outfit',sans-serif;font-size:13.5px;color:var(--ink);background:var(--bg);
+  outline:none;transition:border-color .18s;
+}
+.field-input:focus,.field-select:focus{border-color:var(--s);background:#fff}
+
+/* ── DIM SECTION ── */
+.dim-section{margin-bottom:2.5rem}
+.dim-header{
+  display:flex;align-items:center;gap:12px;
+  padding:1rem 1.3rem;border-radius:10px;margin-bottom:1.2rem;
+  border:1px solid transparent;
+}
+.dh-s{background:var(--sbg);border-color:rgba(15,118,110,.2)}
+.dh-p{background:var(--pbg);border-color:rgba(79,70,229,.2)}
+.dh-a{background:var(--abg);border-color:rgba(217,119,6,.2)}
+.dh-c{background:var(--cbg);border-color:rgba(220,38,38,.2)}
+.dh-e{background:var(--ebg);border-color:rgba(37,99,235,.2)}
+.dim-letter{
+  width:44px;height:44px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Fraunces',serif;font-size:1.5rem;font-weight:700;
+  flex-shrink:0;color:#fff;
+}
+.dl-s{background:var(--s)}.dl-p{background:var(--p)}.dl-a{background:var(--a)}.dl-c{background:var(--c)}.dl-e{background:var(--e)}
+.dim-info h2{font-family:'Fraunces',serif;font-size:1.05rem;font-weight:600;margin-bottom:2px}
+.dim-info p{font-size:11.5px;color:var(--muted);line-height:1.4}
+.dim-score-preview{
+  margin-left:auto;text-align:right;flex-shrink:0;
+  font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);
+}
+.dim-score-preview strong{font-size:1.4rem;font-family:'Fraunces',serif;font-weight:700;display:block}
+
+/* ── QUESTION CARD ── */
+.q-card{
+  background:var(--surface);border:1.5px solid var(--border);border-radius:10px;
+  padding:1.15rem 1.4rem;margin-bottom:.9rem;
+  transition:border-color .15s,box-shadow .15s;
+}
+.q-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.07)}
+.q-card.done{border-left:3px solid}
+.q-card.done-s{border-left-color:var(--s)}
+.q-card.done-p{border-left-color:var(--p)}
+.q-card.done-a{border-left-color:var(--a)}
+.q-card.done-c{border-left-color:var(--c)}
+.q-card.done-e{border-left-color:var(--e)}
+
+.q-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:.6rem}
+.q-num{
+  font-family:'DM Mono',monospace;font-size:10px;font-weight:600;
+  color:var(--muted);min-width:26px;padding-top:3px;
+}
+.q-text{font-size:.95rem;font-weight:500;line-height:1.5;flex:1}
+.q-sig{
+  font-family:'DM Mono',monospace;font-size:10px;
+  color:var(--muted);background:var(--bg);border:1px solid var(--border);
+  padding:2px 7px;border-radius:3px;display:inline-block;
+  margin:0 0 .7rem 26px;
+}
+.rev-tag{
+  font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  background:var(--redlt);color:var(--red);padding:1px 6px;border-radius:3px;
+  margin-left:6px;vertical-align:middle;
+}
+
+/* ── SCALE ── */
+.scale-wrap{display:flex;align-items:center;gap:6px;margin-left:26px;flex-wrap:wrap}
+.scale-lbl{font-size:10px;color:var(--muted);min-width:70px;line-height:1.3}
+.scale-lbl.r{text-align:right}
+.scale-btns{display:flex;gap:5px;flex:1;justify-content:center}
+.sb{
+  width:40px;height:40px;border-radius:8px;
+  border:1.5px solid var(--border);background:var(--bg);
+  font-family:'DM Mono',monospace;font-size:13px;font-weight:600;
+  cursor:pointer;color:var(--ink);transition:all .12s;
+}
+.sb:hover{transform:scale(1.08)}
+.sb.sel-s{background:var(--s)!important;border-color:var(--s)!important;color:#fff!important}
+.sb.sel-p{background:var(--p)!important;border-color:var(--p)!important;color:#fff!important}
+.sb.sel-a{background:var(--a)!important;border-color:var(--a)!important;color:#fff!important}
+.sb.sel-c{background:var(--c)!important;border-color:var(--c)!important;color:#fff!important}
+.sb.sel-e{background:var(--e)!important;border-color:var(--e)!important;color:#fff!important}
+
+/* ── OPEN TEXT ── */
+.q-open{
+  width:calc(100% - 26px);margin-left:26px;
+  padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;
+  font-family:'Outfit',sans-serif;font-size:13.5px;color:var(--ink);background:var(--bg);
+  resize:vertical;min-height:72px;outline:none;transition:border-color .18s;line-height:1.5;
+}
+.q-open:focus{border-color:var(--e);background:#fff}
+.open-prompt{
+  font-size:11px;color:var(--e);font-style:italic;
+  margin:0 0 .5rem 26px;display:block;
+}
+
+/* ── SUBMIT ── */
+.submit-section{
+  background:var(--ink);border-radius:12px;padding:2rem;
+  text-align:center;margin-top:2rem;
+}
+.submit-section h3{font-family:'Fraunces',serif;font-size:1.3rem;font-weight:600;color:#fff;margin-bottom:.5rem}
+.submit-section p{font-size:12px;color:rgba(255,255,255,.45);margin-bottom:1.5rem;line-height:1.6}
+.submit-btn{
+  background:#5EEAD4;color:var(--ink);border:none;
+  padding:14px 48px;border-radius:8px;font-family:'Fraunces',serif;font-size:1.1rem;font-weight:600;
+  cursor:pointer;transition:all .18s;letter-spacing:.3px;
+}
+.submit-btn:hover{background:#2DD4BF;transform:translateY(-1px)}
+.submit-note{font-size:11px;color:rgba(255,255,255,.3);margin-top:.8rem}
+
+/* ── RESULTS PANEL ── */
+.results-panel{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:2rem;margin-top:2rem;display:none;
+  box-shadow:0 4px 20px rgba(0,0,0,.1);
+}
+.results-panel.show{display:block}
+.results-title{font-family:'Fraunces',serif;font-size:1.4rem;font-weight:700;margin-bottom:1.2rem}
+.dim-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.dim-row-label{width:220px;font-size:13px;font-weight:500;flex-shrink:0}
+.dim-bar-track{flex:1;height:10px;background:var(--bg);border-radius:5px;overflow:hidden;border:1px solid var(--border)}
+.dim-bar-fill{height:100%;border-radius:5px;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.bf-s{background:var(--s)}.bf-p{background:var(--p)}.bf-a{background:var(--a)}.bf-c{background:var(--c)}.bf-e{background:var(--e)}
+.dim-row-val{width:42px;text-align:right;font-family:'Fraunces',serif;font-size:1rem;font-weight:700}
+.band-chip{display:inline-block;padding:2px 9px;border-radius:4px;font-size:11px;font-weight:700;margin-left:6px}
+.b-crit{background:var(--redlt);color:var(--red)}.b-sig{background:var(--goldlt);color:var(--gold)}
+.b-mod{background:#FEF9C3;color:#78350F}.b-hlt{background:var(--greenlt);color:var(--green)}
+.b-exc{background:var(--ebg);color:var(--edk)}
+.export-row{display:flex;gap:10px;margin-top:1.5rem;flex-wrap:wrap}
+.exp-full{padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;border:none;transition:all .18s;letter-spacing:.2px}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:24px;right:24px;z-index:9999;background:var(--ink);color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;transform:translateY(80px);opacity:0;transition:all .3s;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.25)}
+#toast.show{transform:translateY(0);opacity:1}
+
+@media(max-width:560px){
+  .scale-btns{gap:4px}.sb{width:36px;height:36px;font-size:12px}
+  .scale-lbl{display:none}
+  .export-btns{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <p class="eyebrow">CBRE Framework · Platform Engineering</p>
+  <h1>SPACE Developer<br><em>Productivity Survey</em></h1>
+  <p>Help your Platform Engineering team identify where AI can best support your workflow. All responses are anonymous and take approximately 10 minutes.</p>
+  <div class="header-meta">
+    <span class="meta-badge"><strong>50</strong> questions</span>
+    <span class="meta-badge"><strong>5</strong> dimensions</span>
+    <span class="meta-badge"><strong>~10</strong> minutes</span>
+    <span class="meta-badge">Anonymous</span>
+    <span class="meta-badge">Export to <strong>Excel · JSON · CSV</strong></span>
+  </div>
+</header>
+
+<div class="sticky-bar">
+  <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+  <div class="prog-text" id="progText">0 / 50</div>
+  <div class="export-btns">
+    <button class="exp-btn exp-excel" onclick="exportExcel()" title="Export responses to Excel (.xlsx compatible CSV)">⬇ Excel</button>
+    <button class="exp-btn exp-json"  onclick="exportJSON()"  title="Export responses to JSON">⬇ JSON</button>
+    <button class="exp-btn exp-csv"   onclick="exportCSV()"   title="Export responses to CSV">⬇ CSV</button>
+  </div>
+</div>
+
+<main>
+
+<!-- Context -->
+<div class="ctx-card">
+  <div class="ctx-title">About you — context helps us interpret results</div>
+  <div class="ctx-grid">
+    <div class="field-group">
+      <label class="field-label">Team / Squad</label>
+      <input class="field-input" id="ctx_team" placeholder="e.g. Precision Ag Platform">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Role</label>
+      <select class="field-select" id="ctx_role">
+        <option value="">Select your role</option>
+        <option>Senior Developer</option>
+        <option>Developer</option>
+        <option>Tech Lead</option>
+        <option>SRE / DevOps</option>
+        <option>Engineering Manager</option>
+        <option>Staff Engineer</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <label class="field-label">Years at company</label>
+      <select class="field-select" id="ctx_years">
+        <option value="">Select</option>
+        <option>&lt;6 months</option>
+        <option>6–12 months</option>
+        <option>1–3 years</option>
+        <option>3–5 years</option>
+        <option>5+ years</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <label class="field-label">Primary language</label>
+      <input class="field-input" id="ctx_lang" placeholder="e.g. Python, TypeScript">
+    </div>
+  </div>
+</div>
+
+<div id="surveyBody"></div>
+
+<div class="submit-section">
+  <h3>Ready to submit?</h3>
+  <p>Your responses are saved locally and never sent anywhere until you export them.<br>Export to Excel, JSON, or CSV to share with your Platform Engineering team.</p>
+  <button class="submit-btn" onclick="submitSurvey()">Calculate My SPACE Profile &amp; Export ▶</button>
+  <p class="submit-note">Responses persist in your browser until you clear them</p>
+</div>
+
+<div class="results-panel" id="resultsPanel">
+  <div class="results-title">Your SPACE Profile</div>
+  <div id="dimResults"></div>
+  <div id="dimAlerts" style="margin-top:1rem"></div>
+  <hr style="margin:1.5rem 0;border-color:var(--border)">
+  <div style="font-family:'Fraunces',serif;font-size:1rem;font-weight:600;margin-bottom:1rem">Export your responses</div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.6">Export follows the <strong>Expected File Format Guide</strong>: columns team, role, name, Q1–Q50. Column headers match exactly what the SPACE Enterprise Template import system expects.</p>
+  <div class="export-row">
+    <button class="exp-full" style="background:#16A34A;color:#fff" onclick="exportExcel()">⬇ Export to Excel (.xlsx)</button>
+    <button class="exp-full" style="background:#2563EB;color:#fff" onclick="exportJSON()">⬇ Export to JSON</button>
+    <button class="exp-full" style="background:#D97706;color:#fff" onclick="exportCSV()">⬇ Export to CSV</button>
+  </div>
+</div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── QUESTION DATA ──────────────────────────────────────────────────────────
+const REVERSE_QS = new Set([3,8,12,17,19,22,23,25,26,27,30,32,37,41,42,45,48,49]);
+const OPEN_QS    = new Set([10,20,40,50]);
+
+const DIMS = {
+  s:{letter:'S',name:'Satisfaction & Wellbeing',   desc:'How developers feel about their work, tools, and culture',   cls:'s'},
+  p:{letter:'P',name:'Performance & Outcomes',     desc:'Quality and reliability of work delivered — not just volume', cls:'p'},
+  a:{letter:'A',name:'Activity & Output Patterns', desc:'Visible work distribution — always pair with Satisfaction',    cls:'a'},
+  c:{letter:'C',name:'Communication & Collaboration',desc:'Team health, handoffs, and cross-functional coordination',   cls:'c'},
+  e:{letter:'E',name:'Efficiency & Flow',          desc:'How well tooling and pipelines support uninterrupted work',    cls:'e'},
+};
+
+const QUESTIONS = [
+  // S — Satisfaction
+  {n:1,  d:'s', t:"How satisfied are you with your overall developer experience at this organisation?",                               sig:"Systemic friction & culture",           lbl_l:"Very dissatisfied", lbl_r:"Very satisfied"},
+  {n:2,  d:'s', t:"Do you feel proud of the work you ship each sprint?",                                                              sig:"Code quality & autonomy",               lbl_l:"Not at all",        lbl_r:"Very proud"},
+  {n:3,  d:'s', t:"How often does work spill into your personal time due to blockers or pressure?",                                   sig:"Workload & burnout risk",               lbl_l:"Always (worst)",    lbl_r:"Never (best)",        rev:true},
+  {n:4,  d:'s', t:"How well does your organisation support your professional growth as a developer?",                                 sig:"Career & learning friction",            lbl_l:"Very poorly",       lbl_r:"Excellent"},
+  {n:5,  d:'s', t:"How satisfied are you with the quality of your local development environment?",                                   sig:"Tooling & environment quality",         lbl_l:"Very dissatisfied", lbl_r:"Very satisfied"},
+  {n:6,  d:'s', t:"How often do you feel a sense of accomplishment at the end of a working day?",                                    sig:"Flow & meaningful work",                lbl_l:"Rarely",            lbl_r:"Every day"},
+  {n:7,  d:'s', t:"How psychologically safe do you feel raising technical concerns or suggesting improvements?",                     sig:"Psychological safety — CRITICAL GATE",  lbl_l:"Very unsafe",       lbl_r:"Very safe"},
+  {n:8,  d:'s', t:"How often do repetitive, low-value tasks dominate your workday?",                                                 sig:"Toil & automation opportunity",         lbl_l:"Constantly (worst)",lbl_r:"Never (best)",        rev:true},
+  {n:9,  d:'s', t:"Would you recommend this organisation as a great place to work as a developer?",                                  sig:"Developer NPS",                         lbl_l:"Definitely not",    lbl_r:"Definitely yes"},
+  {n:10, d:'s', t:"In your own words: what one thing most negatively impacts your day-to-day satisfaction?",                         sig:"Open-ended satisfaction blocker",       open:true},
+  // P — Performance
+  {n:11, d:'p', t:"How often does your code pass review without requiring significant rework?",                                      sig:"Code review friction",                  lbl_l:"Rarely",            lbl_r:"Almost always"},
+  {n:12, d:'p', t:"How reliable is your code in production — how often are you paged for issues you introduced?",                   sig:"Production stability",                  lbl_l:"Very frequently",   lbl_r:"Never",               rev:true},
+  {n:13, d:'p', t:"Does your output this sprint reflect your true capability, or were you constrained by external blockers?",        sig:"Capability vs. blocker gap",            lbl_l:"Very constrained",  lbl_r:"Full capability"},
+  {n:14, d:'p', t:"How well do you understand the business or user impact of the features you build?",                              sig:"Requirements & context clarity",        lbl_l:"Not at all",        lbl_r:"Very well"},
+  {n:15, d:'p', t:"How often do features you ship reach users without post-release hotfixes?",                                       sig:"Release quality",                       lbl_l:"Rarely",            lbl_r:"Almost always"},
+  {n:16, d:'p', t:"How confident are you in the correctness of your code before submitting a PR?",                                   sig:"Testing & debugging friction",          lbl_l:"Not confident",     lbl_r:"Very confident"},
+  {n:17, d:'p', t:"How often does technical debt in the codebase reduce the quality of your current output?",                        sig:"Technical debt impact",                 lbl_l:"All the time",      lbl_r:"Never",               rev:true},
+  {n:18, d:'p', t:"How quickly can you understand an unfamiliar part of the codebase to make a safe change?",                       sig:"Codebase onboarding — HIGH AI SIGNAL",  lbl_l:"Very slowly (days)",lbl_r:"Very quickly (mins)"},
+  {n:19, d:'p', t:"How often do you revisit completed work due to changing or unclear requirements?",                                sig:"Requirements churn & rework",           lbl_l:"Constantly",        lbl_r:"Very rarely",         rev:true},
+  {n:20, d:'p', t:"Describe a recent time when an external blocker prevented you from delivering quality work.",                     sig:"Open-ended performance blocker",        open:true},
+  // A — Activity
+  {n:21, d:'a', t:"What percentage of your working day feels genuinely productive (not waiting, interrupted, or in meetings)?",     sig:"Effective vs. total time ratio",        lbl_l:"<20%",              lbl_r:">80%"},
+  {n:22, d:'a', t:"How many significant context switches do you estimate making per day?",                                          sig:"Context-switch overload",               lbl_l:"10+ per day",       lbl_r:"0–2 per day",         rev:true},
+  {n:23, d:'a', t:"How many hours per sprint are lost to unplanned interruptions (Slack, ad-hoc requests, unexpected meetings)?",   sig:"Interruption-driven toil",              lbl_l:">10 hrs",           lbl_r:"<2 hrs",              rev:true},
+  {n:24, d:'a', t:"How much of your sprint time is spent on tasks clearly aligned with your team's top priority?",                 sig:"Priority alignment & task clarity",     lbl_l:"Very little",       lbl_r:"Most of it"},
+  {n:25, d:'a', t:"How often do you work on more than 3 tasks simultaneously within a single sprint?",                             sig:"WIP overload",                          lbl_l:"Every sprint",      lbl_r:"Never",               rev:true},
+  {n:26, d:'a', t:"How much time per week do you spend on manual, repetitive tasks that could reasonably be automated?",           sig:"Automation & AI opportunity",           lbl_l:">5 hours",          lbl_r:"<30 min",             rev:true},
+  {n:27, d:'a', t:"How often do you attend meetings that add no value to your work?",                                              sig:"Meeting overhead & time waste",         lbl_l:"Daily",             lbl_r:"Never",               rev:true},
+  {n:28, d:'a', t:"How often do you get a continuous block of 2+ hours for deep focused coding work?",                             sig:"Deep work & flow availability",         lbl_l:"Rarely",            lbl_r:"Every day"},
+  {n:29, d:'a', t:"How much time in a typical sprint do you spend on debugging vs. writing new code?",                             sig:"Debugging-to-coding ratio",             lbl_l:"Mostly debugging",  lbl_r:"Mostly coding"},
+  {n:30, d:'a', t:"Estimate: how many hours per sprint are lost to waiting (reviews, builds, environments, approvals)?",           sig:"Queue & wait time — HIGH SIGNAL",       lbl_l:">8 hours",          lbl_r:"<1 hour",             rev:true},
+  // C — Communication
+  {n:31, d:'c', t:"When blocked waiting for information or a decision, how long does it typically take to get unblocked?",         sig:"Decision & response latency",           lbl_l:"Days",              lbl_r:"Minutes"},
+  {n:32, d:'c', t:"How often do unclear requirements or acceptance criteria cause rework after you start coding?",                  sig:"Requirements clarity & rework",         lbl_l:"Every sprint",      lbl_r:"Rarely",              rev:true},
+  {n:33, d:'c', t:"How collaborative and constructive do code reviews feel on your team?",                                         sig:"Code review culture & friction",        lbl_l:"Adversarial",       lbl_r:"Very collaborative"},
+  {n:34, d:'c', t:"How well do teams you depend on communicate changes that affect your work?",                                    sig:"Cross-team dependency visibility",      lbl_l:"Very poorly",       lbl_r:"Very well"},
+  {n:35, d:'c', t:"How easy is it to find the right person to answer a technical question about an unfamiliar service?",           sig:"Knowledge ownership discoverability",   lbl_l:"Very difficult",    lbl_r:"Very easy"},
+  {n:36, d:'c', t:"How fair and timely is the feedback you receive from your manager or tech lead?",                               sig:"Feedback loop quality",                 lbl_l:"Rarely & unfair",   lbl_r:"Regular & fair"},
+  {n:37, d:'c', t:"How often do API or service contract changes from other teams surprise you at integration time?",               sig:"API contract surprises",                lbl_l:"Every sprint",      lbl_r:"Very rarely",         rev:true},
+  {n:38, d:'c', t:"How effective are your sprint planning sessions at giving you clarity for the week ahead?",                     sig:"Planning effectiveness",                lbl_l:"Not effective",     lbl_r:"Very effective"},
+  {n:39, d:'c', t:"How well does your on-call rotation distribute burden fairly across the team?",                                 sig:"On-call toil & rotation health",        lbl_l:"Very unfairly",     lbl_r:"Very fairly"},
+  {n:40, d:'c', t:"Describe the biggest communication or collaboration breakdown that blocked your productivity recently.",        sig:"Open-ended coordination blocker",       open:true},
+  // E — Efficiency
+  {n:41, d:'e', t:"How often are you blocked waiting for a build or test pipeline to complete before you can continue?",           sig:"Build & pipeline wait — HIGH SIGNAL",   lbl_l:"Multiple times daily",lbl_r:"Never",             rev:true},
+  {n:42, d:'e', t:"How much time per week is wasted on flaky tests that fail for reasons unrelated to your change?",              sig:"Flaky test toil",                       lbl_l:">3 hours",          lbl_r:"<15 min",             rev:true},
+  {n:43, d:'e', t:"How clearly do CI/CD failure messages explain what went wrong and how to fix it?",                             sig:"Pipeline error observability",          lbl_l:"Completely cryptic", lbl_r:"Always clear"},
+  {n:44, d:'e', t:"How quickly can you provision a fresh development or test environment when you need one?",                     sig:"Environment provisioning wait",         lbl_l:"Hours or days",     lbl_r:"Under 5 minutes"},
+  {n:45, d:'e', t:"How much time do you spend per incident on RCA before you can begin remediation?",                             sig:"Incident RCA speed — HIGH SIGNAL",      lbl_l:"Hours",             lbl_r:"Minutes",             rev:true},
+  {n:46, d:'e', t:"How well does your toolchain support staying in a state of flow — does switching between tools break focus?",  sig:"Toolchain integration & flow",          lbl_l:"Constantly broken", lbl_r:"Seamlessly integrated"},
+  {n:47, d:'e', t:"How confident are you in understanding the blast radius of your code changes before merging?",                 sig:"Change impact analysis",                lbl_l:"Not at all",        lbl_r:"Very confident"},
+  {n:48, d:'e', t:"How much time per week do you spend searching for documentation, wikis, or past decisions before finding what you need?", sig:"Knowledge discoverability", lbl_l:"Hours per week",    lbl_r:"Minutes per week",    rev:true},
+  {n:49, d:'e', t:"How often does local environment config drift or instability block you from running the project?",             sig:"Local environment reliability",         lbl_l:"Frequently",        lbl_r:"Never",               rev:true},
+  {n:50, d:'e', t:"If you could wave a magic wand and fix one tooling or process inefficiency tomorrow, what would it be?",      sig:"Open-ended efficiency blocker",         open:true},
+];
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+const answers = {};
+
+// ── BUILD SURVEY ─────────────────────────────────────────────────────────
+function buildSurvey() {
+  const body = document.getElementById('surveyBody');
+  let html = '';
+  let lastDim = '';
+
+  QUESTIONS.forEach(q => {
+    if (q.d !== lastDim) {
+      const di = DIMS[q.d];
+      html += `
+      <div class="dim-section">
+        <div class="dim-header dh-${q.d}">
+          <div class="dim-letter dl-${q.d}">${di.letter}</div>
+          <div class="dim-info">
+            <h2>${di.name}</h2>
+            <p>${di.desc}</p>
+          </div>
+          <div class="dim-score-preview" id="dim-preview-${q.d}">
+            <strong id="dim-score-${q.d}">—</strong>
+            / 5.0
+          </div>
+        </div>`;
+      lastDim = q.d;
+    }
+
+    const revTag = q.rev ? `<span class="rev-tag">Reverse</span>` : '';
+    const sigClass = `sig-${q.d}`;
+
+    html += `<div class="q-card" id="qcard-${q.n}">
+      <div class="q-top">
+        <span class="q-num">Q${q.n}</span>
+        <span class="q-text">${q.t}${revTag}</span>
+      </div>
+      <span class="q-sig">↳ ${q.sig}</span>`;
+
+    if (q.open) {
+      html += `<span class="open-prompt">Open text — your exact words are valuable. Do not edit for professionalism.</span>
+        <textarea class="q-open" id="ans-${q.n}" placeholder="Type your response here..." oninput="markOpen(${q.n},'${q.d}')"></textarea>`;
+    } else {
+      html += `<div class="scale-wrap">
+        <span class="scale-lbl">${q.lbl_l||'1 — Worst'}</span>
+        <div class="scale-btns" id="sc-${q.n}"></div>
+        <span class="scale-lbl r">${q.lbl_r||'5 — Best'}</span>
+      </div>`;
+    }
+    html += `</div>`;
+
+    // Close dim section when changing dim
+    if (q.n === 10 || q.n === 20 || q.n === 30 || q.n === 40 || q.n === 50) {
+      html += `</div>`;
+    }
+  });
+
+  body.innerHTML = html;
+
+  // Build scale buttons
+  QUESTIONS.filter(q => !q.open).forEach(q => {
+    const cont = document.getElementById('sc-' + q.n);
+    if (!cont) return;
+    for (let v = 1; v <= 5; v++) {
+      const btn = document.createElement('button');
+      btn.className = 'sb';
+      btn.textContent = v;
+      btn.setAttribute('aria-label', `Score ${v} for question ${q.n}`);
+      btn.onclick = () => selectAns(q.n, v, q.d);
+      cont.appendChild(btn);
+    }
+  });
+}
+
+function selectAns(qn, val, dim) {
+  answers[qn] = val;
+  const cont = document.getElementById('sc-' + qn);
+  if (cont) cont.querySelectorAll('.sb').forEach(b => {
+    b.className = 'sb';
+    if (parseInt(b.textContent) === val) b.classList.add('sel-' + dim);
+  });
+  const card = document.getElementById('qcard-' + qn);
+  if (card) card.className = `q-card done done-${dim}`;
+  updateProgress();
+  updateDimPreview(dim);
+}
+
+function markOpen(qn, dim) {
+  const v = document.getElementById('ans-' + qn)?.value?.trim();
+  answers[qn] = v || null;
+  const card = document.getElementById('qcard-' + qn);
+  if (card) card.className = v ? `q-card done done-${dim}` : 'q-card';
+  updateProgress();
+}
+
+function updateProgress() {
+  const answered = Object.values(answers).filter(v => v !== null && v !== undefined && v !== '').length;
+  const pct = Math.round(answered / 50 * 100);
+  document.getElementById('progFill').style.width = pct + '%';
+  document.getElementById('progText').textContent = `${answered} / 50`;
+}
+
+function updateDimPreview(dim) {
+  const qs = QUESTIONS.filter(q => q.d === dim && !q.open);
+  const scores = qs.map(q => {
+    const raw = answers[q.n];
+    if (!raw) return null;
+    return q.rev ? 6 - parseInt(raw) : parseInt(raw);
+  }).filter(v => v !== null);
+  if (!scores.length) return;
+  const avg = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+  const el = document.getElementById('dim-score-' + dim);
+  if (el) el.textContent = avg;
+}
+
+// ── SUBMIT & SCORES ───────────────────────────────────────────────────────
+function submitSurvey() {
+  const dimRaw = { s: [], p: [], a: [], c: [], e: [] };
+  QUESTIONS.filter(q => !q.open).forEach(q => {
+    const raw = answers[q.n];
+    if (!raw) return;
+    const sc = q.rev ? 6 - parseInt(raw) : parseInt(raw);
+    dimRaw[q.d].push(sc);
+  });
+
+  const avg = a => a.length ? (a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : null;
+  const scores = {};
+  ['s','p','a','c','e'].forEach(d => { scores[d] = avg(dimRaw[d]); });
+
+  const BANDS = [
+    { max: 2.0, l: 'Critical',    cls: 'b-crit', icon: '🚨' },
+    { max: 2.9, l: 'Significant', cls: 'b-sig',  icon: '⚠️' },
+    { max: 3.4, l: 'Moderate',    cls: 'b-mod',  icon: '🔍' },
+    { max: 4.2, l: 'Healthy',     cls: 'b-hlt',  icon: '✅' },
+    { max: 5.0, l: 'Excellent',   cls: 'b-exc',  icon: '⭐' },
+  ];
+  const getBand = sc => sc ? BANDS.find(b => parseFloat(sc) <= b.max) : null;
+
+  const dimFull = {s:'Satisfaction',p:'Performance',a:'Activity',c:'Communication',e:'Efficiency'};
+
+  let dimHtml = '';
+  ['s','p','a','c','e'].forEach(d => {
+    const sc = scores[d];
+    const pct = sc ? (parseFloat(sc) / 5 * 100).toFixed(0) : 0;
+    const band = getBand(sc);
+    dimHtml += `<div class="dim-row">
+      <span class="dim-row-label">${DIMS[d].letter} — ${dimFull[d]}</span>
+      <div class="dim-bar-track"><div class="dim-bar-fill bf-${d}" style="width:${pct}%"></div></div>
+      <span class="dim-row-val">${sc || '—'}</span>
+      ${band ? `<span class="band-chip ${band.cls}">${band.icon} ${band.l}</span>` : ''}
+    </div>`;
+  });
+
+  let alertHtml = '';
+  ['s','p','a','c','e'].forEach(d => {
+    const sc = parseFloat(scores[d]);
+    if (!sc) return;
+    let msg = '';
+    if (sc < 2.5) msg = `<div style="background:var(--redlt);color:var(--red);padding:9px 13px;border-radius:7px;font-size:12.5px;font-weight:500;border-left:3px solid var(--red);margin-bottom:8px">🚨 <strong>${dimFull[d]} (${sc}/5)</strong> — Critical: requires immediate investigation. This dimension is a P1 blocker.</div>`;
+    else if (sc < 3.5) msg = `<div style="background:var(--goldlt);color:var(--gold);padding:9px 13px;border-radius:7px;font-size:12.5px;font-weight:500;border-left:3px solid var(--gold);margin-bottom:8px">⚠️ <strong>${dimFull[d]} (${sc}/5)</strong> — Significant friction. Cross-validate with DORA metrics and journey mapping.</div>`;
+    if (msg) alertHtml += msg;
+  });
+  if (!alertHtml) alertHtml = `<div style="background:var(--greenlt);color:var(--green);padding:9px 13px;border-radius:7px;font-size:12.5px;font-weight:500;border-left:3px solid var(--green)">✅ All dimensions above the Significant threshold. Monitor trends between cycles.</div>`;
+
+  document.getElementById('dimResults').innerHTML = dimHtml;
+  document.getElementById('dimAlerts').innerHTML = alertHtml;
+  const panel = document.getElementById('resultsPanel');
+  panel.classList.add('show');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('✓ Survey complete — scores calculated. Export your responses below.');
+}
+
+// ── BUILD EXPORT ROW ──────────────────────────────────────────────────────
+function buildExportRow() {
+  const row = {
+    team: document.getElementById('ctx_team')?.value || '',
+    role: document.getElementById('ctx_role')?.value || '',
+    name: '(anonymous)',
+  };
+  // Q1–Q50 in order — raw scores as entered (system applies reverse on import)
+  for (let i = 1; i <= 50; i++) {
+    const val = answers[i];
+    row[`Q${i}`] = (val !== null && val !== undefined && val !== '') ? val : '';
+  }
+  return row;
+}
+
+// ── CSV EXPORT ────────────────────────────────────────────────────────────
+function exportCSV() {
+  const row = buildExportRow();
+  const headers = Object.keys(row);
+  const escape = v => {
+    const s = String(v || '');
+    return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [
+    headers.join(','),
+    headers.map(h => escape(row[h])).join(',')
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const ts = new Date().toISOString().slice(0,10);
+  download(blob, `SPACE_Survey_Response_${ts}.csv`);
+  toast('✓ CSV exported — import into Response Data sheet');
+}
+
+// ── JSON EXPORT ───────────────────────────────────────────────────────────
+function exportJSON() {
+  const row = buildExportRow();
+  // Add metadata
+  const output = {
+    _exported: new Date().toISOString(),
+    _format: 'SPACE Survey Response v1.0',
+    _note: 'Raw scores 1-5. Reverse-scored questions: Q3,8,12,17,19,22,23,25,26,27,30,32,37,41,42,45,48,49. Apply formula (6-raw) on import. Open text: Q10,Q20,Q40,Q50.',
+    _reverse_scored_questions: [3,8,12,17,19,22,23,25,26,27,30,32,37,41,42,45,48,49],
+    _open_text_questions: [10,20,40,50],
+    ...row
+  };
+  const blob = new Blob([JSON.stringify([output], null, 2)], { type: 'application/json' });
+  const ts = new Date().toISOString().slice(0,10);
+  download(blob, `SPACE_Survey_Response_${ts}.json`);
+  toast('✓ JSON exported — import into SPACE Enterprise Template');
+}
+
+// ── EXCEL EXPORT (CSV with .csv named for Excel + BOM) ────────────────────
+// True .xlsx requires a library; we export a BOM-prefixed CSV that Excel
+// opens natively with correct column mapping, following the file format guide.
+function exportExcel() {
+  const row = buildExportRow();
+  const headers = Object.keys(row);
+
+  const escape = v => {
+    const s = String(v || '');
+    return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  // Row 1: Dimension labels per column
+  const dimLabels = headers.map(h => {
+    if (['team','role','name'].includes(h)) return 'Respondent Info';
+    const qn = parseInt(h.slice(1));
+    if (qn <= 10) return 'S — Satisfaction';
+    if (qn <= 20) return 'P — Performance';
+    if (qn <= 30) return 'A — Activity';
+    if (qn <= 40) return 'C — Communication';
+    return 'E — Efficiency';
+  });
+
+  // Row 2: Format hints
+  const formatHints = headers.map(h => {
+    if (['team','role','name'].includes(h)) return 'Text';
+    const qn = parseInt(h.slice(1));
+    if ([10,20,40,50].includes(qn)) return 'Open Text';
+    if ([3,8,12,17,19,22,23,25,26,27,30,32,37,41,42,45,48,49].includes(qn)) return '1-5 REVERSE';
+    return '1-5 Likert';
+  });
+
+  const lines = [
+    dimLabels.map(escape).join(','),
+    headers.join(','),
+    formatHints.map(escape).join(','),
+    headers.map(h => escape(row[h])).join(','),
+  ];
+
+  // BOM for Excel UTF-8 compatibility
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const ts = new Date().toISOString().slice(0,10);
+  download(blob, `SPACE_Survey_Response_${ts}.csv`);
+  toast('✓ Excel-compatible CSV exported. Open in Excel or import into the SPACE system.');
+}
+
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function toast(msg, dur = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+buildSurvey();
+</script>
+</body>
+</html>

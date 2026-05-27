@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.vite/
+coverage/
+packages/backend/prisma/*.db
+packages/backend/prisma/*.db-journal
+.DS_Store
+.idea/
+.vscode/settings.json
+_inspect/

@@ -1,0 +1,54 @@
+{
+  "name": "@space/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "db:migrate": "prisma migrate dev",
+    "db:reset": "prisma migrate reset --force",
+    "db:generate": "prisma generate",
+    "seed": "tsx prisma/seed.ts",
+    "seed:demo": "tsx prisma/seed.demo.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.18.0",
+    "@space/shared": "*",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "papaparse": "^5.4.1",
+    "pdfkit": "^0.15.0",
+    "uuid": "^10.0.0",
+    "xlsx": "^0.18.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^20.14.15",
+    "@types/papaparse": "^5.3.14",
+    "@types/pdfkit": "^0.13.4",
+    "@types/supertest": "^6.0.2",
+    "@types/uuid": "^10.0.0",
+    "prisma": "^5.18.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.17.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

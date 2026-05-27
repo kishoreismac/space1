@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPACE Enterprise System</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F5F2EC;--surface:#FFFFFF;--ink:#1C1917;--ink2:#44403C;
+  --border:#E2DDD6;--muted:#A8A29E;
+  --teal:#0F766E;--teal-lt:#CCFBF1;--teal-dk:#065F46;
+  --gold:#92400E;--gold-lt:#FEF3C7;
+  --red:#991B1B;--red-lt:#FEE2E2;
+  --amber:#B45309;--amber-lt:#FEF9C3;
+  --purple:#5B21B6;--purple-lt:#EDE9FE;
+  --blue:#1D4ED8;--blue-lt:#DBEAFE;
+  --green:#166534;--green-lt:#DCFCE7;
+  --ph1:#B91C1C;--ph1bg:#FEF2F2;
+  --ph2:#92400E;--ph2bg:#FFFBEB;
+  --ph3:#14532D;--ph3bg:#F0FDF4;
+  --ph4:#3730A3;--ph4bg:#EEF2FF;
+  --ph5:#0F4C81;--ph5bg:#EFF6FF;
+  --radius:12px;--radius-sm:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.06);
+  --shadow-lg:0 4px 20px rgba(0,0,0,.1),0 8px 30px rgba(0,0,0,.08);
+}
+html{scroll-behavior:smooth;font-size:15px}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);line-height:1.6;min-height:100vh}
+
+/* ── TOOLTIP SYSTEM ── */
+[data-tip]{position:relative;cursor:help}
+[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:#1C1917;color:#F5F5F4;font-family:'DM Mono',monospace;font-size:11px;
+  padding:6px 10px;border-radius:6px;white-space:nowrap;max-width:280px;white-space:normal;
+  text-align:center;line-height:1.4;pointer-events:none;
+  opacity:0;visibility:hidden;transition:opacity .15s,transform .15s;
+  transform:translateX(-50%) translateY(4px);z-index:1000;
+  box-shadow:0 4px 12px rgba(0,0,0,.25);
+}
+[data-tip]::before{
+  content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:#1C1917;
+  opacity:0;visibility:hidden;transition:opacity .15s;z-index:1001;
+}
+[data-tip]:hover::after,[data-tip]:hover::before{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+
+/* ── NAV ── */
+#mainNav{
+  position:sticky;top:0;z-index:200;
+  background:var(--ink);
+  display:flex;align-items:stretch;
+  border-bottom:2px solid var(--teal);
+  overflow-x:auto;
+}
+.nav-btn{
+  flex-shrink:0;padding:13px 16px;
+  background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;
+  font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;letter-spacing:.3px;
+  color:rgba(255,255,255,.45);cursor:pointer;transition:all .18s;white-space:nowrap;
+}
+.nav-btn:hover{color:rgba(255,255,255,.75);background:rgba(255,255,255,.04)}
+.nav-btn.active{color:#5EEAD4;border-bottom-color:#5EEAD4;background:rgba(94,234,212,.06)}
+.nav-progress{
+  margin-left:auto;display:flex;align-items:center;gap:8px;padding:0 16px;
+  font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,.4);flex-shrink:0;
+}
+.nav-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15);transition:background .3s}
+.nav-dot.done{background:#5EEAD4}
+
+/* ── PANELS ── */
+.panel{display:none}.panel.active{display:block}
+
+/* ── HERO / SETUP PAGE ── */
+.setup-hero{
+  background:linear-gradient(135deg,#1C1917 0%,#292524 50%,#1C1917 100%);
+  padding:4rem 2rem 3rem;text-align:center;position:relative;overflow:hidden;
+}
+.setup-hero::before{
+  content:'SPACE';position:absolute;top:-40px;left:50%;transform:translateX(-50%);
+  font-family:'Fraunces',serif;font-size:22rem;font-weight:700;color:rgba(255,255,255,.02);
+  pointer-events:none;white-space:nowrap;
+}
+.hero-eyebrow{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:#5EEAD4;margin-bottom:1rem}
+.hero-title{font-family:'Fraunces',serif;font-size:clamp(2.2rem,5vw,3.8rem);font-weight:700;color:#fff;line-height:1.1;margin-bottom:1rem}
+.hero-title em{color:#FCD34D;font-style:italic}
+.hero-sub{font-family:'Outfit',sans-serif;font-size:1rem;color:rgba(255,255,255,.5);max-width:540px;margin:0 auto 2.5rem;line-height:1.7}
+
+/* ── MAIN WRAPPER ── */
+.wrap{max-width:1040px;margin:0 auto;padding:2.5rem 1.5rem}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.8rem;box-shadow:var(--shadow);margin-bottom:1.5rem}
+.card-sm{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1.2rem;box-shadow:var(--shadow)}
+.card-hdr{display:flex;align-items:flex-start;gap:12px;margin-bottom:1.2rem}
+.card-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}
+.card-meta h3{font-family:'Fraunces',serif;font-size:1.15rem;font-weight:600;margin-bottom:2px}
+.card-meta p{font-size:12px;color:var(--muted);line-height:1.5}
+
+/* ── FORM ELEMENTS ── */
+.field-group{margin-bottom:1.2rem}
+.field-label{display:block;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.field-label .req{color:var(--red);margin-left:2px}
+.field-input,.field-select,.field-textarea{
+  width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;
+  font-family:'Outfit',sans-serif;font-size:14px;color:var(--ink);background:var(--bg);
+  outline:none;transition:border-color .18s,background .18s;
+}
+.field-input:focus,.field-select:focus,.field-textarea:focus{border-color:var(--teal);background:#fff}
+.field-textarea{resize:vertical;min-height:80px}
+.field-hint{font-size:11px;color:var(--muted);margin-top:4px;font-family:'DM Mono',monospace}
+.field-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+
+/* ── SECTION HEADERS ── */
+.sec-hdr{display:flex;align-items:center;gap:10px;margin-bottom:1.2rem;padding-bottom:.8rem;border-bottom:1px solid var(--border)}
+.sec-badge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px}
+.sec-title{font-family:'Fraunces',serif;font-size:1.1rem;font-weight:600}
+
+/* ── SURVEY LINK GENERATOR ── */
+.link-box{
+  background:var(--ink);border-radius:10px;padding:1.2rem 1.4rem;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+.link-url{font-family:'DM Mono',monospace;font-size:12px;color:#5EEAD4;flex:1;word-break:break-all;min-width:200px}
+.copy-btn{background:#5EEAD4;color:var(--ink);border:none;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;transition:opacity .15s}
+.copy-btn:hover{opacity:.85}
+
+/* ── RESPONDENTS TABLE ── */
+.resp-table{width:100%;border-collapse:collapse;font-size:12px}
+.resp-table th{background:var(--ink);color:#fff;padding:8px 12px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:600}
+.resp-table td{padding:9px 12px;border-bottom:1px solid var(--border);font-family:'DM Mono',monospace;font-size:11px}
+.resp-table tr:hover td{background:#F9F7F4}
+.status-chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.status-sent{background:var(--amber-lt);color:var(--amber)}
+.status-done{background:var(--green-lt);color:var(--green)}
+.status-pending{background:var(--border);color:var(--muted)}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .18s;letter-spacing:.2px}
+.btn-primary{background:var(--ink);color:#fff}.btn-primary:hover{background:#292524}
+.btn-teal{background:var(--teal);color:#fff}.btn-teal:hover{background:var(--teal-dk)}
+.btn-gold{background:#D97706;color:#fff}.btn-gold:hover{background:var(--gold)}
+.btn-outline{background:transparent;color:var(--ink);border:1.5px solid var(--border)}.btn-outline:hover{border-color:var(--teal);color:var(--teal)}
+.btn-sm{padding:7px 15px;font-size:12px}
+.btn-danger{background:var(--red);color:#fff}
+
+/* ── PHASE HEADERS ── */
+.phase-hero{padding:2rem;border-radius:var(--radius) var(--radius) 0 0;color:#fff;position:relative;overflow:hidden}
+.phase-hero::after{content:attr(data-num);position:absolute;right:-10px;top:-20px;font-family:'Fraunces',serif;font-size:10rem;font-weight:700;opacity:.08;line-height:1;pointer-events:none}
+.ph1-bg{background:linear-gradient(135deg,#991B1B,#B91C1C)}
+.ph2-bg{background:linear-gradient(135deg,#78350F,#92400E)}
+.ph3-bg{background:linear-gradient(135deg,#14532D,#166534)}
+.ph4-bg{background:linear-gradient(135deg,#312E81,#3730A3)}
+.ph5-bg{background:linear-gradient(135deg,#0C4A6E,#0F4C81)}
+.phase-hero .tag{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;opacity:.7;margin-bottom:4px}
+.phase-hero h2{font-family:'Fraunces',serif;font-size:1.6rem;font-weight:700;margin-bottom:4px}
+.phase-hero .timing{font-size:12px;opacity:.65}
+
+/* ── ACTIVITY TEMPLATES ── */
+.activity-block{border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:1.2rem;overflow:hidden}
+.activity-header{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  background:var(--bg);border-bottom:1px solid var(--border);cursor:pointer;
+  transition:background .15s;
+}
+.activity-header:hover{background:#EDEBE6}
+.activity-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;flex-shrink:0}
+.activity-title{font-size:13px;font-weight:600;flex:1}
+.activity-toggle{font-size:16px;color:var(--muted);transition:transform .2s}
+.activity-body{padding:1.4rem}
+.activity-collapsed .activity-body{display:none}
+.activity-collapsed .activity-toggle{transform:rotate(-90deg)}
+
+/* ── DECISION GATE ── */
+.gate{background:var(--ink);border-radius:10px;padding:1.2rem 1.5rem;display:flex;gap:12px;align-items:flex-start;margin:1rem 0}
+.gate-icon{font-size:1.3rem;flex-shrink:0;margin-top:2px}
+.gate h4{font-family:'Fraunces',serif;font-size:.95rem;font-weight:600;color:#FCD34D;margin-bottom:3px}
+.gate p{font-size:12px;color:rgba(255,255,255,.6);line-height:1.55}
+
+/* ── SURVEY SCALE ── */
+.survey-section-hdr{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:1.5rem 0 1rem;display:flex;align-items:center;gap:10px}
+.dim-pill{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px}
+.dp-s{background:var(--teal-lt);color:var(--teal-dk)}.dp-p{background:var(--purple-lt);color:var(--purple)}
+.dp-a{background:var(--amber-lt);color:var(--amber)}.dp-c{background:var(--red-lt);color:var(--red)}.dp-e{background:var(--blue-lt);color:var(--blue)}
+
+.q-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.1rem 1.3rem;margin-bottom:.8rem;transition:border-color .15s}
+.q-item.answered{border-left:3px solid}
+.q-item.ans-s{border-left-color:var(--teal)}.q-item.ans-p{border-left-color:var(--purple)}
+.q-item.ans-a{border-left-color:var(--amber)}.q-item.ans-c{border-left-color:var(--red)}.q-item.ans-e{border-left-color:var(--blue)}
+.q-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:.6rem}
+.q-n{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);font-weight:600;min-width:28px;padding-top:3px}
+.q-t{font-size:13.5px;font-weight:500;line-height:1.5;flex:1}
+.sig-tag{display:inline-block;font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:3px;margin:0 0 .7rem 28px;color:var(--muted);background:var(--bg);border:1px solid var(--border)}
+.scale-wrap{display:flex;align-items:center;gap:6px;margin-left:28px;flex-wrap:wrap}
+.scale-lbl{font-size:10px;color:var(--muted);min-width:65px}
+.scale-lbl.r{text-align:right}
+.scale-btns{display:flex;gap:5px;flex:1;justify-content:center}
+.sb{
+  width:36px;height:36px;border-radius:6px;border:1.5px solid var(--border);
+  background:var(--bg);font-family:'DM Mono',monospace;font-size:13px;font-weight:600;
+  cursor:pointer;color:var(--ink);transition:all .12s;
+}
+.sb:hover{border-color:var(--teal);background:var(--teal-lt)}
+.sb.sel-s{background:var(--teal)!important;border-color:var(--teal)!important;color:#fff!important}
+.sb.sel-p{background:var(--purple)!important;border-color:var(--purple)!important;color:#fff!important}
+.sb.sel-a{background:var(--amber)!important;border-color:var(--amber)!important;color:#fff!important}
+.sb.sel-c{background:var(--red)!important;border-color:var(--red)!important;color:#fff!important}
+.sb.sel-e{background:var(--blue)!important;border-color:var(--blue)!important;color:#fff!important}
+.q-open{width:calc(100% - 28px);margin-left:28px;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--ink);background:var(--bg);resize:vertical;min-height:64px;outline:none;transition:border-color .18s}
+.q-open:focus{border-color:var(--teal);background:#fff}
+
+/* ── SCORES GRID ── */
+.scores-display{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:1.2rem 0}
+@media(max-width:640px){.scores-display{grid-template-columns:repeat(2,1fr)}}
+.score-cell{border:2px solid var(--border);border-radius:10px;padding:1rem;text-align:center}
+.score-cell .sl{font-family:'Fraunces',serif;font-size:2rem;font-weight:700;line-height:1}
+.score-cell .sn{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:3px 0 8px}
+.score-cell .sv{font-family:'Fraunces',serif;font-size:2rem;font-weight:700;margin-bottom:4px}
+.score-cell .sb2{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.sc-s .sl,.sc-s .sv{color:var(--teal)}.sc-p .sl,.sc-p .sv{color:var(--purple)}
+.sc-a .sl,.sc-a .sv{color:var(--amber)}.sc-c .sl,.sc-c .sv{color:var(--red)}.sc-e .sl,.sc-e .sv{color:var(--blue)}
+.b-crit{background:var(--red-lt);color:var(--red)}.b-sig{background:var(--amber-lt);color:var(--amber)}
+.b-mod{background:#FEF9C3;color:#854D0E}.b-hlt{background:var(--green-lt);color:var(--green)}.b-exc{background:var(--blue-lt);color:var(--blue)}
+
+/* ── TRIAGE TABLE ── */
+.triage-tbl{width:100%;border-collapse:collapse;font-size:12px;margin:1rem 0}
+.triage-tbl th{background:var(--ink);color:#fff;padding:9px 12px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:600}
+.triage-tbl td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;font-family:'DM Mono',monospace;font-size:11px}
+.triage-tbl tr:nth-child(even) td{background:#FAFAF9}
+.p1{background:var(--red-lt);color:var(--red);padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700}
+.p2{background:var(--amber-lt);color:var(--amber);padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700}
+.p3{background:var(--green-lt);color:var(--green);padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700}
+
+/* ── JOURNEY MAP ── */
+.jm-step{display:flex;gap:10px;margin-bottom:10px;align-items:flex-start}
+.jm-num{width:30px;height:30px;border-radius:50%;background:var(--ph4);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0}
+.jm-body{flex:1}
+.friction-select{padding:5px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;background:var(--bg);color:var(--ink);outline:none;font-family:'DM Mono',monospace}
+
+/* ── TRIANGULATION ── */
+.tri-row{display:grid;grid-template-columns:2.5fr 1fr 1fr 1fr 80px 110px;gap:6px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--border);font-size:11px}
+.tri-row.hdr{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);padding-bottom:6px;font-family:'DM Mono',monospace}
+
+/* ── REGISTRY TABLE ── */
+.reg-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin:1rem 0}
+.reg-tbl th{background:var(--ink);color:#EDE9FE;padding:8px 11px;text-align:left;font-size:9px;letter-spacing:1px;text-transform:uppercase;font-weight:600;white-space:nowrap}
+.reg-tbl td{padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top;font-family:'DM Mono',monospace;font-size:11px}
+.reg-tbl tr:nth-child(even) td{background:#FAFAF9}
+
+/* ── FEASIBILITY ── */
+.feas-score{display:inline-block;width:28px;height:28px;border-radius:5px;text-align:center;line-height:28px;font-weight:700;font-size:12px;cursor:pointer;transition:transform .1s}
+.feas-score:hover{transform:scale(1.15)}
+.fs5{background:#BBF7D0;color:#14532D}.fs4{background:#D9F99D;color:#365314}
+.fs3{background:#FEF08A;color:#713F12}.fs2{background:#FED7AA;color:#7C2D12}.fs1{background:#FECACA;color:#7F1D1D}
+
+/* ── PROGRESS BAR ── */
+.prog-bar{height:4px;background:var(--border);border-radius:2px;margin-bottom:1.5rem}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--teal),#2DD4BF);border-radius:2px;transition:width .4s ease}
+
+/* ── TOAST ── */
+#toast{
+  position:fixed;bottom:24px;right:24px;z-index:9999;
+  background:var(--ink);color:#fff;padding:12px 20px;border-radius:10px;
+  font-size:13px;font-weight:500;
+  transform:translateY(80px);opacity:0;transition:all .3s;pointer-events:none;
+  box-shadow:var(--shadow-lg);
+}
+#toast.show{transform:translateY(0);opacity:1}
+
+/* ── MISC ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.muted{color:var(--muted);font-size:12px}
+.mono{font-family:'DM Mono',monospace}
+hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
+.alert{padding:10px 14px;border-radius:8px;font-size:12.5px;font-weight:500;border-left:3px solid;margin-bottom:8px}
+.alert-red{background:var(--red-lt);color:var(--red);border-color:var(--red)}
+.alert-amber{background:var(--amber-lt);color:var(--amber);border-color:var(--amber)}
+.alert-green{background:var(--green-lt);color:var(--green);border-color:var(--green)}
+.empty-state{text-align:center;padding:2.5rem;color:var(--muted)}
+.empty-state .empty-icon{font-size:2.5rem;margin-bottom:.8rem}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav id="mainNav">
+  <button class="nav-btn active" onclick="go('setup')">🏢 Setup</button>
+  <button class="nav-btn" onclick="go('survey')">📋 Survey</button>
+  <button class="nav-btn" onclick="go('p1')">P1 Triage</button>
+  <button class="nav-btn" onclick="go('p2')">P2 Themes</button>
+  <button class="nav-btn" onclick="go('p3')">P3 Validate</button>
+  <button class="nav-btn" onclick="go('p4')">P4 Journey</button>
+  <button class="nav-btn" onclick="go('p5')">P5 Registry</button>
+  <div class="nav-progress">
+    <div class="nav-dot" id="nd0"></div>
+    <div class="nav-dot" id="nd1"></div>
+    <div class="nav-dot" id="nd2"></div>
+    <div class="nav-dot" id="nd3"></div>
+    <div class="nav-dot" id="nd4"></div>
+    <div class="nav-dot" id="nd5"></div>
+    <div class="nav-dot" id="nd6"></div>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════
+     SETUP PAGE
+══════════════════════════════════ -->
+<div class="panel active" id="panel-setup">
+<div class="setup-hero">
+  <p class="hero-eyebrow">CBRE Framework · Platform Engineering</p>
+  <h1 class="hero-title">SPACE Developer<br><em>Productivity System</em></h1>
+  <p class="hero-sub">Define your organisation, configure your survey, generate shareable links, and track responses — all before running the five-phase analysis.</p>
+</div>
+<div class="wrap">
+
+  <!-- Organisation setup -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-icon" style="background:#F0FDF4">🏢</div>
+      <div class="card-meta"><h3>Organisation & Survey Setup</h3><p>All fields here populate the survey header and phase reports</p></div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
+        <label class="field-label" data-tip="Full name of the company or division running this assessment">Company name <span class="req">*</span></label>
+        <input class="field-input" id="companyName" placeholder="e.g. Acme Corporation" data-tip="Enter the full legal or trading name of your organisation">
+        <p class="field-hint">Appears in all phase reports and survey headers</p>
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="The specific engineering team or department being assessed">Team / Department <span class="req">*</span></label>
+        <input class="field-input" id="teamName" placeholder="e.g. Platform Engineering" data-tip="E.g. 'Platform Engineering', 'Mobile Team', 'Full Stack Squad'">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
+        <label class="field-label" data-tip="The quarter and year this assessment cycle covers (e.g. Q2 2025)">Survey cycle <span class="req">*</span></label>
+        <input class="field-input" id="surveyCycle" placeholder="e.g. Q2 2025" data-tip="Used for trend comparison across survey cycles">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Name of the Platform Engineering lead or facilitator running this assessment">Assessment lead <span class="req">*</span></label>
+        <input class="field-input" id="assessmentLead" placeholder="e.g. Jane Smith" data-tip="This person is responsible for the five-phase analysis and stakeholder briefing">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Email of the VP Engineering or executive sponsor who receives the triage summary on Day 1">VP Engineering email</label>
+        <input class="field-input" id="vpEmail" type="email" placeholder="vp@company.com" data-tip="The Phase 1 triage summary is addressed to this person">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
+        <label class="field-label" data-tip="Total number of developers in scope for this assessment cycle">Target respondents</label>
+        <input class="field-input" id="targetRespondents" type="number" placeholder="e.g. 50" data-tip="Used to calculate response rate. Aim for 70%+ completion.">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Previous survey cycle identifier for trend comparison (e.g. Q1 2025). Leave blank if first cycle.">Previous cycle (for trend)</label>
+        <input class="field-input" id="prevCycle" placeholder="e.g. Q1 2025" data-tip="The system uses this to calculate score deltas and flag ↓0.4+ drops as P1">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Date the survey closes. Responses received after this date are not included in analysis.">Survey close date</label>
+        <input class="field-input" id="closeDate" type="date" data-tip="Leave the survey open for 5 business days. Send one reminder on Day 3.">
+      </div>
+    </div>
+    <div class="field-group">
+      <label class="field-label" data-tip="Any context about the team's current situation that will help interpret results">Assessment context / notes</label>
+      <textarea class="field-textarea" id="assessmentContext" placeholder="e.g. Team recently migrated to Azure DevOps. New product launch pressure this quarter. First SPACE cycle for this team." data-tip="This context helps facilitators interpret scores during journey mapping sessions"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-teal" onclick="saveSetup()">💾 Save Setup</button>
+      <button class="btn btn-outline" onclick="go('survey')">Next: Configure Survey →</button>
+    </div>
+  </div>
+
+  <!-- Survey link generator -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-icon" style="background:#EFF6FF">🔗</div>
+      <div class="card-meta"><h3>Survey Link Generator</h3><p>Generate unique links for each team or send a single shared link to all developers</p></div>
+    </div>
+
+    <div class="field-row" style="margin-bottom:1.2rem">
+      <div class="field-group">
+        <label class="field-label" data-tip="The email or name of the developer you want to send a personalised survey link to">Developer name / email</label>
+        <input class="field-input" id="devName" placeholder="e.g. alex@company.com" data-tip="Used to track who has responded. Responses are still anonymous in analysis.">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="The sub-team or squad this developer belongs to. Used for team-level breakdowns in Phase 1.">Squad / Sub-team</label>
+        <input class="field-input" id="devSquad" placeholder="e.g. Precision Ag Platform" data-tip="Helps identify which teams have the lowest scores in Phase 1 triage">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Developer's role level. Used to segment results by seniority in Phase 1.">Role</label>
+        <select class="field-select" id="devRole" data-tip="Role context helps interpret Activity and Performance dimension scores">
+          <option value="">Select role</option>
+          <option>Senior Developer</option>
+          <option>Developer</option>
+          <option>Tech Lead</option>
+          <option>SRE / DevOps</option>
+          <option>Engineering Manager</option>
+          <option>Staff Engineer</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:1.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="addSurveyLink()">+ Add & Generate Link</button>
+      <button class="btn btn-outline btn-sm" onclick="copySharedLink()">📋 Copy Shared Team Link</button>
+      <button class="btn btn-outline btn-sm" onclick="bulkImport()">📤 Bulk Import (CSV)</button>
+    </div>
+
+    <div class="link-box" style="margin-bottom:1.5rem">
+      <span style="font-size:11px;color:#5EEAD4;font-family:'DM Mono',monospace;font-weight:600;flex-shrink:0">SHARED LINK:</span>
+      <span class="link-url" id="sharedLinkDisplay">Save setup first to generate survey links</span>
+      <button class="copy-btn" onclick="copySharedLink()">Copy</button>
+    </div>
+
+    <h4 style="font-size:12px;font-weight:600;margin-bottom:.8rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase">Individual survey links</h4>
+    <div id="recipientsEmpty" class="empty-state"><div class="empty-icon">📭</div><p>No recipients added yet. Add a developer above to generate their personalised link.</p></div>
+    <div id="recipientsList" style="display:none">
+      <table class="resp-table" id="recipientsTable">
+        <thead><tr><th>Name / Email</th><th>Squad</th><th>Role</th><th>Survey Link</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
+        <tbody id="recipientsBody"></tbody>
+      </table>
+    </div>
+    <div id="responseSummary" style="margin-top:1rem;display:none">
+      <div class="grid3">
+        <div class="card-sm" style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:2rem;font-weight:700;color:var(--blue)" id="countSent">0</div><div class="muted">Links sent</div></div>
+        <div class="card-sm" style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:2rem;font-weight:700;color:var(--green)" id="countDone">0</div><div class="muted">Completed</div></div>
+        <div class="card-sm" style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:2rem;font-weight:700;color:var(--teal)" id="countRate">0%</div><div class="muted">Response rate</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Previous cycle scores -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-icon" style="background:#FEF9C3">📈</div>
+      <div class="card-meta"><h3>Previous Cycle Scores <span style="font-size:11px;font-weight:400;color:var(--muted)">(for trend analysis)</span></h3><p>Enter last cycle's dimension averages to enable Phase 1 trend detection. Leave blank for first cycle.</p></div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
+        <label class="field-label" data-tip="Previous cycle S (Satisfaction) dimension average. Used to calculate score delta for trend detection.">S — Satisfaction (prev)</label>
+        <input class="field-input" id="prevS" type="number" min="1" max="5" step="0.1" placeholder="e.g. 3.2" data-tip="Leave blank if this is your first survey cycle">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Previous cycle P (Performance) dimension average">P — Performance (prev)</label>
+        <input class="field-input" id="prevP" type="number" min="1" max="5" step="0.1" placeholder="e.g. 3.5" data-tip="A drop of >0.4 points from previous cycle triggers P1 regardless of absolute score">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Previous cycle A (Activity) dimension average">A — Activity (prev)</label>
+        <input class="field-input" id="prevA" type="number" min="1" max="5" step="0.1" placeholder="e.g. 3.8" data-tip="Activity alone is dangerous — always pair with Satisfaction to identify hidden toil">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Previous cycle C (Communication) dimension average">C — Communication (prev)</label>
+        <input class="field-input" id="prevC" type="number" min="1" max="5" step="0.1" placeholder="e.g. 3.1" data-tip="Communication blockers sit between people and teams — invisible in individual metrics">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Previous cycle E (Efficiency) dimension average">E — Efficiency (prev)</label>
+        <input class="field-input" id="prevE" type="number" min="1" max="5" step="0.1" placeholder="e.g. 3.0" data-tip="Efficiency is the highest-ROI AI intervention target when combined with low Satisfaction">
+      </div>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="savePrevScores()">Save Previous Scores</button>
+  </div>
+
+</div><!-- /wrap -->
+</div><!-- /setup -->
+
+<!-- ══════════════════════════════════
+     SURVEY PAGE
+══════════════════════════════════ -->
+<div class="panel" id="panel-survey">
+<div class="wrap">
+  <div class="card" style="background:var(--ink);color:#fff;border-color:var(--ink)">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="flex:1"><div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#5EEAD4;margin-bottom:4px">SPACE Developer Survey</div>
+      <div id="surveyOrgLabel" style="font-family:'Fraunces',serif;font-size:1.4rem;font-weight:600">Configure organisation in Setup first</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px">All responses are anonymous · ~10 minutes · 50 questions</div></div>
+      <div style="text-align:right;flex-shrink:0">
+        <div id="surveyProgressText" style="font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,.4)">0 / 50</div>
+        <div class="prog-bar" style="width:200px;margin-top:6px;margin-bottom:0"><div class="prog-fill" id="surveyProgFill" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Respondent context -->
+  <div class="card">
+    <div class="sec-hdr"><span class="sec-badge" style="background:var(--bg);color:var(--muted);border:1px solid var(--border)">Context</span><span class="sec-title">About You</span></div>
+    <div class="field-row">
+      <div class="field-group">
+        <label class="field-label" data-tip="Your squad or sub-team name. This helps us identify which teams need the most support.">Your team / squad</label>
+        <input class="field-input" id="respTeam" placeholder="e.g. Mobile Platform Team" data-tip="Used for team-level score breakdowns. Your individual response is anonymous.">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Your role level. Used to segment results by seniority — e.g. senior devs and juniors often experience different blockers.">Your role</label>
+        <select class="field-select" id="respRole" data-tip="We use role to check whether certain blockers are more severe for specific role levels">
+          <option value="">Select your role</option>
+          <option>Senior Developer</option><option>Developer</option><option>Tech Lead</option>
+          <option>SRE / DevOps</option><option>Engineering Manager</option><option>Staff Engineer</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="How many years you have worked at this company. Longer-tenured developers often have normalised friction that newer developers notice more acutely.">Years at company</label>
+        <select class="field-select" id="respYears" data-tip="Tenure context helps us interpret whether blockers are systemic or onboarding-related">
+          <option value="">Select</option>
+          <option>&lt;6 months</option><option>6–12 months</option><option>1–3 years</option><option>3–5 years</option><option>5+ years</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Primary programming language. Used to check whether certain pipeline or tooling blockers cluster around specific tech stacks.">Primary language</label>
+        <input class="field-input" id="respLang" placeholder="e.g. Python, TypeScript" data-tip="Optional — helps correlate pipeline blockers with tech stack">
+      </div>
+    </div>
+  </div>
+
+  <div id="surveyQsContainer"></div>
+
+  <div style="text-align:center;padding:2rem 0">
+    <button class="btn btn-teal" style="padding:14px 48px;font-size:15px" onclick="submitSurvey()">Submit Survey & Calculate Scores ▶</button>
+    <p class="muted" style="margin-top:8px">Your responses are saved locally and feed directly into Phase 1–5 analysis</p>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════
+     PHASE 1 — TRIAGE
+══════════════════════════════════ -->
+<div class="panel" id="panel-p1">
+<div class="wrap">
+  <div class="phase-hero ph1-bg card" data-num="01" style="margin-bottom:1.5rem">
+    <div class="tag">Phase 1 · Day 1 — Within 24 hours of survey close</div>
+    <h2>Score Triage</h2>
+    <div class="timing">Apply range bands · Flag P1 dimensions · Detect cross-patterns · Send executive summary to VP Engineering</div>
+  </div>
+
+  <!-- Activity 1 -->
+  <div class="activity-block" id="act1-1">
+    <div class="activity-header" onclick="toggleActivity('act1-1')">
+      <div class="activity-num" style="background:var(--ph1)">1</div>
+      <div class="activity-title">Apply Score Range Bands</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Auto-calculated from survey responses</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div id="p1ScoresDisplay">
+        <div class="empty-state"><div class="empty-icon">📊</div><p>Complete the survey or enter scores in Phase 1 to see triage results.</p>
+        <button class="btn btn-outline btn-sm" style="margin-top:1rem" onclick="go('survey')">Take Survey First</button></div>
+      </div>
+      <div class="gate"><span class="gate-icon">⚡</span><div>
+        <h4>Decision Gate: Emergency vs. Standard Track</h4>
+        <p>Score below 2.0 → Emergency: 48hr deep-dive, journey mapping within 5 days. Score 2.0–2.9 → Standard: investigation within 2 weeks. Q7 (Psych Safety) below 2.5 → replace workshops with 1:1 interviews in Phase 4.</p>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Activity 2 -->
+  <div class="activity-block activity-collapsed" id="act1-2">
+    <div class="activity-header" onclick="toggleActivity('act1-2')">
+      <div class="activity-num" style="background:var(--ph1)">2</div>
+      <div class="activity-title">Cross-Pattern Detection</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Auto-generated from dimension scores</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div id="crossPatternOutput"><div class="empty-state"><div class="empty-icon">🔍</div><p>Cross-pattern alerts appear here after scores are submitted.</p></div></div>
+    </div>
+  </div>
+
+  <!-- Activity 3: Executive Summary Template -->
+  <div class="activity-block activity-collapsed" id="act1-3">
+    <div class="activity-header" onclick="toggleActivity('act1-3')">
+      <div class="activity-num" style="background:var(--ph1)">3</div>
+      <div class="activity-title">Executive Summary Template</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Send to VP Engineering same day</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="alert alert-amber">⏱️ This summary must be sent within 24 hours of survey close. Visible action prevents survey fatigue from taking hold.</div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Auto-populated from setup. Edit if needed.">To (VP Engineering)</label>
+        <input class="field-input" id="execTo" placeholder="vpeng@company.com" data-tip="The executive receiving this triage summary — set in Setup page">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Subject line for the triage email. Should signal urgency without causing alarm.">Subject line</label>
+        <input class="field-input" id="execSubject" placeholder="SPACE Survey Results — [Company] [Cycle] — Initial Triage" data-tip="Keep this specific and dated — generic subject lines get deprioritised">
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="The top 1–3 findings from the score triage. Be specific and evidence-based. Avoid subjective language.">Key findings (top 1–3)</label>
+        <textarea class="field-textarea" id="execFindings" placeholder="1. Efficiency scored 2.2/5 (Critical band) — drop of 0.6 pts from Q1 2025&#10;2. Satisfaction + Efficiency both below 2.9: highest-risk cross-pattern detected&#10;3. Communication at 2.6 — significant friction, investigation within 2 weeks" data-tip="Use the exact scores and band names. Avoid hedging language."></textarea>
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="What specific actions the team will take next and when. This is the most important section — developers will ask if anything happened.">Committed next steps with dates</label>
+        <textarea class="field-textarea" id="execNextSteps" placeholder="1. Phase 2 open text analysis: [Date]&#10;2. Journey mapping workshops scheduled for: [Date range]&#10;3. Phase 5 registry and AI feasibility complete by: [Date]&#10;4. Results presentation to team: [Date]" data-tip="Specific dates are critical. Vague commitments ('soon', 'shortly') destroy survey trust."></textarea>
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Any immediate actions you are taking before the full analysis is complete — e.g. scheduling journey mapping sessions right now.">Immediate actions (before full analysis)</label>
+        <textarea class="field-textarea" style="min-height:60px" id="execImmediate" placeholder="e.g. Journey mapping sessions booked for [dates]. Reached out to team leads to discuss Efficiency findings." data-tip="Shows the VP that action is already in motion, not waiting for the full report"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-teal btn-sm" onclick="saveExecSummary()">💾 Save Summary</button>
+        <button class="btn btn-outline btn-sm" onclick="copyExecSummary()">📋 Copy to Clipboard</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════
+     PHASE 2 — OPEN TEXT
+══════════════════════════════════ -->
+<div class="panel" id="panel-p2">
+<div class="wrap">
+  <div class="phase-hero ph2-bg card" data-num="02" style="margin-bottom:1.5rem">
+    <div class="tag">Phase 2 · Days 1–3</div>
+    <h2>Open Text Analysis</h2>
+    <div class="timing">Cluster Q10/Q20/Q40/Q50 themes · Apply 30% threshold · Extract JTBD statements · Preserve verbatim quotes</div>
+  </div>
+
+  <!-- Activity 1: Theme Entry Template -->
+  <div class="activity-block" id="act2-1">
+    <div class="activity-header" onclick="toggleActivity('act2-1')">
+      <div class="activity-num" style="background:var(--ph2)">1</div>
+      <div class="activity-title">Theme Clustering Template</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Enter each theme you identify from open text responses</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="alert alert-amber">📌 Read ALL responses to Q10, Q20, Q40, Q50 before clustering. Do not theme as you read — read everything first, then cluster. Apply the 30% threshold before promoting to Phase 3.</div>
+      <div id="themesList"></div>
+      <div class="card-sm" style="margin-top:1rem;background:var(--bg)">
+        <div class="sec-hdr" style="margin-bottom:1rem"><span class="sec-badge" style="background:var(--ph2bg);color:var(--ph2)">New Theme</span><span class="sec-title" style="font-size:.95rem">Add Identified Theme</span></div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label" data-tip="A clear, specific description of the theme. Avoid vague terms like 'tooling issues' — be specific: 'Build pipeline failures causing 30+ min waits'">Theme description <span class="req">*</span></label>
+            <input class="field-input" id="t_desc" placeholder="e.g. Build pipeline failures causing 30+ min wait times" data-tip="Use the developers' own language where possible. Specific themes are more actionable than broad ones.">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Which open text question generated this theme most frequently">Source question(s) <span class="req">*</span></label>
+            <select class="field-select" id="t_source" data-tip="Q10=Satisfaction, Q20=Performance, Q40=Communication, Q50=Efficiency">
+              <option value="">Select source</option>
+              <option>Q10 — Satisfaction</option><option>Q20 — Performance</option>
+              <option>Q40 — Communication</option><option>Q50 — Efficiency</option><option>Multiple questions</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Count how many individual developers independently mentioned this theme. Do not count multiple mentions from the same person more than once.">Respondents mentioning it <span class="req">*</span></label>
+            <input class="field-input" id="t_count" type="number" placeholder="e.g. 14" data-tip="Count unique respondents only — not total mentions. This feeds the 30% threshold calculation automatically.">
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="Copy a representative verbatim quote that best captures this theme. Preserve exact developer language — do not paraphrase.">Best verbatim quote (exact developer words) <span class="req">*</span></label>
+          <textarea class="field-textarea" style="min-height:64px" id="t_quote" placeholder="Paste the developer's exact words here. Do not paraphrase or clean up the language — the raw emotion and specificity is valuable." data-tip="Verbatim quotes become the raw material for JTBD statements in Step 3 agent design. Preserve exact language."></textarea>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="Translate this theme into a Job-To-Be-Done statement. Format: 'When [developer context] I want to [action] so that [outcome in time/quality terms]'">JTBD statement extracted</label>
+          <textarea class="field-textarea" style="min-height:60px" id="t_jtbd" placeholder="When [developer context], I want to [action] so that [outcome].&#10;Example: 'When a CI build fails, I want to see the root cause in plain English so I can fix it in under 5 minutes instead of 45.'" data-tip="JTBD statements become the foundation for AI agent design in Step 3. A good JTBD names the context, the action, and the measurable outcome."></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addTheme()">+ Add Theme</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity 2: 30% Threshold -->
+  <div class="activity-block activity-collapsed" id="act2-2">
+    <div class="activity-header" onclick="toggleActivity('act2-2')">
+      <div class="activity-num" style="background:var(--ph2)">2</div>
+      <div class="activity-title">30% Threshold Gate</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Auto-applied to themes you enter above</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="gate"><span class="gate-icon">🔍</span><div>
+        <h4>Decision Gate: Promoted vs. Investigate vs. Monitor</h4>
+        <p>≥30% of respondents mention it → PROMOTED to Phase 3 cross-validation. 15–29% → INVESTIGATE: run 3 targeted 1:1 follow-up interviews before deciding. &lt;15% → MONITOR only: note but do not promote to registry.</p>
+      </div></div>
+      <div id="thresholdSummary"><div class="empty-state"><div class="empty-icon">📐</div><p>Add themes above to see threshold status.</p></div></div>
+    </div>
+  </div>
+
+  <!-- Activity 3: Misalignment check -->
+  <div class="activity-block activity-collapsed" id="act2-3">
+    <div class="activity-header" onclick="toggleActivity('act2-3')">
+      <div class="activity-num" style="background:var(--ph2)">3</div>
+      <div class="activity-title">Likert vs. Open Text Misalignment Check</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Identify hidden blockers the Likert scale missed</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="alert alert-amber">🔍 If a theme appears in &gt;30% of open text but does NOT correspond to a low Likert score, the Likert question missed the blocker. Flag it for additional investigation in Phase 3.</div>
+      <div class="field-group">
+        <label class="field-label" data-tip="List any themes that appeared frequently in open text but whose corresponding Likert dimension scored 3.5 or above (healthy range)">Themes appearing in text but NOT in low Likert scores</label>
+        <textarea class="field-textarea" id="misalignNotes" placeholder="e.g. 'On-call rotation burden' appeared in 35% of Q40 responses but C dimension scored 3.4 (moderate/healthy). This suggests Q39 (on-call rotation question) is under-scoring the actual severity. Flag for Phase 3 DORA/incident data pull." data-tip="Misalignment means the survey question didn't capture what developers actually meant. The open text response is more reliable — treat it as a promoted blocker for Phase 3."></textarea>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="saveMisalign()">💾 Save Notes</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════
+     PHASE 3 — CROSS-VALIDATION
+══════════════════════════════════ -->
+<div class="panel" id="panel-p3">
+<div class="wrap">
+  <div class="phase-hero ph3-bg card" data-num="03" style="margin-bottom:1.5rem">
+    <div class="tag">Phase 3 · Days 2–4</div>
+    <h2>Quantitative Cross-Validation</h2>
+    <div class="timing">Pull DORA · Pipeline data · PR analytics · IDE telemetry · Triangulation gate: 2+ signal types required</div>
+  </div>
+
+  <!-- Activity 1: DORA Baseline -->
+  <div class="activity-block" id="act3-1">
+    <div class="activity-header" onclick="toggleActivity('act3-1')">
+      <div class="activity-num" style="background:var(--ph3)">1</div>
+      <div class="activity-title">DORA Metrics Baseline Template</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Enter current and previous cycle DORA data</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label" data-tip="Average time from code commit to production deployment (hours or days). Industry elite: <1hr. High: 1hr–1wk. Medium: 1wk–1mo. Low: >1mo.">Lead time for changes</label>
+          <input class="field-input" id="dora_leadtime" placeholder="e.g. 3.2 days" data-tip="Pull from Azure DevOps, GitHub, or LinearB. Corresponds to Performance and Efficiency dimension scores.">
+          <p class="field-hint">Maps to → P dimension (performance) + E dimension (efficiency)</p>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="How often code is deployed to production. Elite: multiple per day. High: once/day–once/week. Medium: once/week–once/month.">Deployment frequency</label>
+          <input class="field-input" id="dora_deplfreq" placeholder="e.g. 2.3 per week" data-tip="Low deployment frequency often correlates with manual approval gates and change risk aversion — visible in Efficiency scores">
+          <p class="field-hint">Maps to → E dimension (efficiency) + C dimension (approval gates)</p>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="Mean time to restore service after a production failure. Elite: <1hr. High: <1 day. Medium: <1 week.">MTTR (mean time to restore)</label>
+          <input class="field-input" id="dora_mttr" placeholder="e.g. 3.1 hours" data-tip="MTTR directly validates incident RCA speed blockers from Phase 2 open text. High MTTR + low E score = confirmed P1 blocker.">
+          <p class="field-hint">Maps to → E dimension (incident RCA speed)</p>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="% of deployments that cause a production failure or require rollback. Elite: 0–15%. High: 16–30%. Medium: 31–45%.">Change failure rate</label>
+          <input class="field-input" id="dora_cfr" placeholder="e.g. 18%" data-tip="High change failure rate correlates with low P (performance) and low C (requirements clarity) — developers deploying without full understanding of blast radius">
+          <p class="field-hint">Maps to → P dimension + C dimension (requirements)</p>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label" data-tip="Average duration of your CI/CD build pipeline in minutes">Avg build time (minutes)</label>
+          <input class="field-input" id="dora_buildtime" placeholder="e.g. 38" data-tip="Anything above 15 minutes forces context-switching. Above 30 minutes is a confirmed E-dimension P1 blocker.">
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="% of CI/CD runs that fail for reasons unrelated to the developer's change (flaky tests, environment issues, etc.)">Flaky test / failure rate (%)</label>
+          <input class="field-input" id="dora_flaky" placeholder="e.g. 22" data-tip="Above 10% is significant. Above 20% destroys trust in the CI signal entirely — developers start ignoring red builds.">
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="Average number of review iterations per PR (how many times comments are addressed before merge)">PR avg review iterations</label>
+          <input class="field-input" id="dora_prIter" placeholder="e.g. 3.2" data-tip="Above 2.5 iterations per PR typically indicates requirements clarity issues, not code quality issues. Confirms C-dimension blockers.">
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="Average time between PR creation and first human review comment (hours)">PR first-review lag (hrs)</label>
+          <input class="field-input" id="dora_prLag" placeholder="e.g. 22" data-tip="Above 24 hours is a significant queue friction blocker. Confirms Activity dimension wait-time findings.">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label" data-tip="Average active edit session length from IDE telemetry (minutes). Short sessions indicate frequent context-switching.">IDE avg active session length (minutes)</label>
+        <input class="field-input" id="dora_ideSession" placeholder="e.g. 11" data-tip="Pull from VS Code telemetry or JetBrains analytics. Below 20 minutes strongly confirms High A + Low S hidden toil pattern.">
+        <p class="field-hint">Below 20 min → confirms context-switch overload (A dimension). Pull from VS Code / JetBrains telemetry.</p>
+      </div>
+      <button class="btn btn-teal btn-sm" onclick="saveDoraData()">💾 Save DORA Data</button>
+    </div>
+  </div>
+
+  <!-- Activity 2: Triangulation Matrix -->
+  <div class="activity-block activity-collapsed" id="act3-2">
+    <div class="activity-header" onclick="toggleActivity('act3-2')">
+      <div class="activity-num" style="background:var(--ph3)">2</div>
+      <div class="activity-title">Signal Triangulation Matrix</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Add each candidate blocker and score its signal sources</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="gate"><span class="gate-icon">🔺</span><div>
+        <h4>Triangulation Gate — 2+ sources required for registry entry</h4>
+        <p>Survey alone = not sufficient. PROMOTED blockers from Phase 2 enter this matrix. Add DORA/pipeline data as the second signal. A blocker with 3/3 sources is P1 fast-track. 2/3 = P1 or P2 depending on severity. 1/3 = investigate further, not yet in registry.</p>
+      </div></div>
+      <div id="triMatrixList"></div>
+      <div class="card-sm" style="margin-top:1rem;background:var(--bg)">
+        <div class="sec-hdr" style="margin-bottom:1rem"><span class="sec-badge" style="background:var(--ph3bg);color:var(--ph3)">New Row</span><span class="sec-title" style="font-size:.95rem">Add Blocker to Triangulation Matrix</span></div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label" data-tip="Name of the candidate blocker from Phase 2 PROMOTED list">Blocker name <span class="req">*</span></label>
+            <input class="field-input" id="tri_blocker" placeholder="e.g. Build pipeline failures & cryptic error messages" data-tip="Copy the exact theme name from Phase 2 PROMOTED list">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Does the survey Likert score confirm this blocker? Specify which dimension and the score.">Survey signal confirmed?</label>
+            <select class="field-select" id="tri_survey" data-tip="'Confirmed' means the relevant dimension score is in the Significant or Critical range (below 2.9)">
+              <option value="Y">✓ Confirmed</option>
+              <option value="P">~ Partial (moderate range)</option>
+              <option value="N">— Not confirmed</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Does the quantitative data (DORA, pipeline, PR, telemetry) confirm this blocker?">Quant data confirmed?</label>
+            <select class="field-select" id="tri_quant" data-tip="'Confirmed' means you have a specific metric value that validates the survey signal">
+              <option value="Y">✓ Confirmed</option>
+              <option value="P">~ Partial</option>
+              <option value="N">— No data yet</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Did open text from Phase 2 confirm this blocker above the 30% threshold?">Open text confirmed?</label>
+            <select class="field-select" id="tri_text" data-tip="'Confirmed' means the theme was PROMOTED in Phase 2 (≥30% of respondents)">
+              <option value="Y">✓ Confirmed (≥30%)</option>
+              <option value="P">~ Investigate (15–29%)</option>
+              <option value="N">— Below threshold</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="The specific quantitative data point that confirms or refutes this blocker. Be specific with numbers.">Quantitative evidence (specific metric value)</label>
+          <input class="field-input" id="tri_evidence" placeholder="e.g. Avg build time 38 min; flaky test rate 22% of runs" data-tip="Specific numbers are critical. 'Build times are long' is not evidence. '38-minute average build time measured over last 90 days' is evidence.">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addTriRow()">+ Add to Matrix</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════
+     PHASE 4 — JOURNEY MAPPING
+══════════════════════════════════ -->
+<div class="panel" id="panel-p4">
+<div class="wrap">
+  <div class="phase-hero ph4-bg card" data-num="04" style="margin-bottom:1.5rem">
+    <div class="tag">Phase 4 · Days 5–10</div>
+    <h2>Journey Mapping Workshops</h2>
+    <div class="timing">One half-day session per team · 6–8 developers · No managers · 5-Whys root cause per dot-voted pain point</div>
+  </div>
+
+  <!-- Activity 1: Session Setup -->
+  <div class="activity-block" id="act4-1">
+    <div class="activity-header" onclick="toggleActivity('act4-1')">
+      <div class="activity-num" style="background:var(--ph4)">1</div>
+      <div class="activity-title">Session Setup Template</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Complete before each workshop session</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="alert alert-amber" style="margin-bottom:1rem">🚫 Critical rule: Do NOT show developers their survey scores before they narrate. If they see the scores first, you get confirmation of the data, not authentic narration. Let them tell the story first.</div>
+      <div id="jmSessionsList"></div>
+      <div class="card-sm" style="background:var(--bg);margin-top:1rem">
+        <div class="sec-hdr" style="margin-bottom:1rem"><span class="sec-badge" style="background:var(--ph4bg);color:var(--ph4)">New Session</span><span class="sec-title" style="font-size:.95rem">Add Workshop Session</span></div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label" data-tip="Name of the team being workshopped. Run separate sessions for teams with different tech stacks or product areas.">Team / squad name <span class="req">*</span></label>
+            <input class="field-input" id="jms_team" placeholder="e.g. Precision Ag Platform Team" data-tip="Run separate sessions per team — different teams have different friction points">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Date and time of the session. Half-day sessions (3.5 hrs) work best for this format.">Session date & time</label>
+            <input class="field-input" id="jms_date" type="datetime-local" data-tip="Book the session with enough lead time for developers to block their calendars. Avoid Mondays and Fridays.">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Number of developers attending. Optimal is 6–8. Below 5 lacks diversity; above 10 becomes hard to manage.">Developer count</label>
+            <input class="field-input" id="jms_count" type="number" placeholder="e.g. 8" data-tip="6–8 is optimal. Each developer gets 5 dot votes. Total dots available = count × 5.">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Name of the journey mapping facilitator. Should NOT be a manager or team lead from that team.">Facilitator name</label>
+            <input class="field-input" id="jms_facilitator" placeholder="e.g. Jane Smith (Platform Eng)" data-tip="The facilitator maps steps, manages time, runs dot voting, and conducts 5-Whys. Must be neutral — not a team manager.">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addJMSession()">+ Create Session</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity 2: Journey Map Template -->
+  <div class="activity-block activity-collapsed" id="act4-2">
+    <div class="activity-header" onclick="toggleActivity('act4-2')">
+      <div class="activity-num" style="background:var(--ph4)">2</div>
+      <div class="activity-title">Journey Map Template</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Complete live during each workshop session</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="field-group">
+        <label class="field-label" data-tip="Select which session's journey map you are recording">Session</label>
+        <select class="field-select" id="jmSessionSelect" data-tip="Select the active workshop session to record steps for">
+          <option value="">Select session</option>
+        </select>
+      </div>
+      <div id="jmStepsList"></div>
+      <div class="card-sm" style="background:var(--bg);margin-top:1rem">
+        <div class="sec-hdr" style="margin-bottom:1rem"><span class="sec-badge" style="background:var(--ph4bg);color:var(--ph4)">New Step</span><span class="sec-title" style="font-size:.95rem">Add Journey Step</span></div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label" data-tip="The specific workflow step developers described in their narration. Use their exact language.">Workflow step name <span class="req">*</span></label>
+            <input class="field-input" id="jmst_name" placeholder="e.g. Understand the affected service / codebase" data-tip="Name steps as developers described them, not as they appear in a process diagram">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Average time developers reported spending on this step per ticket">Avg time at this step</label>
+            <input class="field-input" id="jmst_time" placeholder="e.g. 3.5 hours" data-tip="Ask: 'On a typical ticket of this type, how long does this step take?' Capture their estimate, not an official metric.">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="How developers rated this step: Red=blocks progress, Yellow=delays without blocking, Green=smooth">Friction type <span class="req">*</span></label>
+            <select class="friction-select" id="jmst_friction" data-tip="🔴 Red = blocks progress or causes significant wait. 🟡 Yellow = creates delay or minor friction. 🟢 Green = smooth and expected.">
+              <option value="green">🟢 Smooth</option>
+              <option value="amber">🟡 Wait / Minor friction</option>
+              <option value="red">🔴 Pain / Major blocker</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Number of dot votes this step received from developers. Each dev has 5 dots. High dot count = high perceived time cost.">Dot votes received</label>
+            <input class="field-input" id="jmst_dots" type="number" placeholder="e.g. 7" data-tip="Run dot voting after annotating all steps. Give each developer 5 sticky dots or digital votes to place on the steps that cost them the most time.">
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="The verbatim quote that best captures developer frustration with this step. Preserve exact language.">Developer quote (verbatim, exact words)</label>
+          <textarea class="field-textarea" style="min-height:60px" id="jmst_quote" placeholder="e.g. 'I have to read every file in the service to understand what it does. The README is two years out of date and nobody has updated it.'" data-tip="Verbatim quotes are more powerful than summaries in stakeholder presentations. Use exact developer language even if informal."></textarea>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="The root cause identified from the 5-Whys drill. This should be the actual root cause, not the symptom. 'Build times are slow' is a symptom. 'No test impact analysis — full suite runs every PR' is a root cause.">5-Whys root cause</label>
+          <textarea class="field-textarea" style="min-height:60px" id="jmst_root" placeholder="Root cause: [specific technical/process cause]&#10;Example: 'Root cause: No test impact analysis — full test suite runs on every PR regardless of change scope. 22% of failures are flaky tests unrelated to the change.'" data-tip="The 5-Whys root cause becomes the blocker registry entry and the JTBD statement foundation for Step 3 agent design."></textarea>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-tip="Extract a JTBD statement from this pain point. Format: When [context], I want to [action], so that [measurable outcome].">JTBD statement (from root cause)</label>
+          <input class="field-input" id="jmst_jtbd" placeholder="When [context], I want to [action], so that [measurable outcome in time/quality terms]." data-tip="Good JTBD: 'When a CI build fails, I want to see the root cause in plain English so I can fix it in under 5 minutes.' Bad JTBD: 'I want better tooling.'">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addJMStep()">+ Add Step</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity 3: 5-Whys summary -->
+  <div class="activity-block activity-collapsed" id="act4-3">
+    <div class="activity-header" onclick="toggleActivity('act4-3')">
+      <div class="activity-num" style="background:var(--ph4)">3</div>
+      <div class="activity-title">Confirmed Blockers from Journey Mapping</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Auto-populated from red/amber dot-voted steps above</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="gate"><span class="gate-icon">🗺️</span><div>
+        <h4>Decision Gate: Confirmed vs. Symptom-only</h4>
+        <p>Blocker confirmed in journey mapping AND in Phase 3 triangulation → 3-source validation, highest confidence. Confirmed only in journey mapping → run targeted data pull. 5-Whys reveals management/process root cause → route to non-AI workstream, not AI backlog.</p>
+      </div></div>
+      <div id="jmConfirmedList"><div class="empty-state"><div class="empty-icon">📌</div><p>Red and amber dot-voted journey steps appear here as confirmed blocker candidates.</p></div></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════
+     PHASE 5 — REGISTRY + AI
+══════════════════════════════════ -->
+<div class="panel" id="panel-p5">
+<div class="wrap">
+  <div class="phase-hero ph5-bg card" data-num="05" style="margin-bottom:1.5rem">
+    <div class="tag">Phase 5 · Days 10–14</div>
+    <h2>Blocker Registry + AI Feasibility</h2>
+    <div class="timing">Compile validated blockers · Score 5-dimension feasibility matrix · Classify: Quick Win / Strategic Bet / Monitor / Defer · Step 2 handoff</div>
+  </div>
+
+  <!-- Activity 1: Blocker Registry -->
+  <div class="activity-block" id="act5-1">
+    <div class="activity-header" onclick="toggleActivity('act5-1')">
+      <div class="activity-num" style="background:var(--ph5)">1</div>
+      <div class="activity-title">Validated Blocker Registry</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Enter all 2+ source validated blockers</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div id="registryList"></div>
+      <div class="card-sm" style="background:var(--bg);margin-top:1rem">
+        <div class="sec-hdr" style="margin-bottom:1rem"><span class="sec-badge" style="background:var(--ph5bg);color:var(--ph5)">New Entry</span><span class="sec-title" style="font-size:.95rem">Add Blocker to Registry</span></div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label" data-tip="Name of the validated blocker. Should be specific and use developer language from Phase 2 open text.">Blocker name <span class="req">*</span></label>
+            <input class="field-input" id="reg_name" placeholder="e.g. Build pipeline failures & flaky tests" data-tip="Use specific, action-oriented language. 'Long build times' → 'Build pipeline wait: avg 38 min per PR'">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Which SDLC phase is most affected by this blocker?">SDLC phase <span class="req">*</span></label>
+            <select class="field-select" id="reg_phase" data-tip="The SDLC phase determines which AI tools are most appropriate. Build/Test → BuildPulse. Code → Copilot. Operate → PagerDuty AI.">
+              <option value="">Select phase</option>
+              <option>Planning</option><option>Coding</option><option>Code Review</option>
+              <option>Build / Test</option><option>Deployment</option><option>Operations</option><option>All phases</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Which SPACE dimension does this blocker primarily affect?">SPACE dimension</label>
+            <select class="field-select" id="reg_dim" data-tip="The dimension determines which survey questions confirm this blocker and how to weight it in the feasibility assessment">
+              <option value="">Select</option>
+              <option>S</option><option>P</option><option>A</option><option>C</option><option>E</option><option>S + E</option><option>C + P</option><option>Multiple</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label" data-tip="% of survey respondents who mentioned this blocker in open text or whose Likert scores confirmed it">Developer reach (%)</label>
+            <input class="field-input" id="reg_reach" placeholder="e.g. 47%" data-tip="High reach = affects many developers. Low reach = affects a small team. Both can be high-priority depending on the severity.">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Estimated hours per sprint lost per developer due to this blocker. Based on developer estimates from journey mapping.">Hrs/sprint lost (est.)</label>
+            <input class="field-input" id="reg_hrs" placeholder="e.g. ~3.5 hrs" data-tip="Ask developers in journey mapping: 'How many hours per sprint does this blocker cost you?' Use their estimate, not a calculated metric.">
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="How many independent signal types confirmed this blocker (Survey / Quant Data / Open Text)?">Signal sources confirmed</label>
+            <select class="field-select" id="reg_sources" data-tip="3/3 = P1 fast-track. 2/3 = P1 or P2 depending on severity. 1/3 = not ready for registry yet.">
+              <option>3 of 3 (Survey + Quant + Open Text)</option>
+              <option>2 of 3 (Survey + Quant)</option>
+              <option>2 of 3 (Survey + Open Text)</option>
+              <option>2 of 3 (Quant + Open Text)</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label class="field-label" data-tip="Is this blocker addressable by an AI tool? Yes=clear AI solution exists, Needs Investigation=possible, No=management or process fix only">AI fit flag <span class="req">*</span></label>
+            <select class="field-select" id="reg_aifit" data-tip="'No — Management fix' entries are routed to a separate workstream, not the AI backlog. This preserves the credibility of the AI opportunity map.">
+              <option value="YES">✓ YES — AI solution available</option>
+              <option value="INV">~ Needs investigation</option>
+              <option value="NO">✗ NO — Management/process fix</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="addRegistryEntry()">+ Add to Registry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity 2: AI Feasibility Scoring -->
+  <div class="activity-block activity-collapsed" id="act5-2">
+    <div class="activity-header" onclick="toggleActivity('act5-2')">
+      <div class="activity-num" style="background:var(--ph5)">2</div>
+      <div class="activity-title">AI Feasibility Scoring Matrix</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Score each AI-fit blocker on 5 weighted dimensions</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div class="gate"><span class="gate-icon">🚀</span><div>
+        <h4>Feasibility Scoring: 5 Dimensions, Weighted</h4>
+        <p>Tool Maturity 25% · Integration Ease 20% · Cost Efficiency 25% · Data Availability 15% · Developer Adoption Likelihood 15%. Score each 1–5. Composite &gt;8.0 = Quick Win. 6–8 = Strategic Bet. 4–6 = Monitor. &lt;4 = Defer.</p>
+      </div></div>
+      <div id="feasibilityMatrix"><div class="empty-state"><div class="empty-icon">📋</div><p>Add AI-fit blockers in the Registry above to populate the scoring matrix here.</p></div></div>
+    </div>
+  </div>
+
+  <!-- Activity 3: Program Output Summary -->
+  <div class="activity-block activity-collapsed" id="act5-3">
+    <div class="activity-header" onclick="toggleActivity('act5-3')">
+      <div class="activity-num" style="background:var(--ph5)">3</div>
+      <div class="activity-title">Ranked AI Opportunity Map — Step 2 Handoff</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Final output summary for VP Engineering presentation</div>
+      <div class="activity-toggle">▾</div>
+    </div>
+    <div class="activity-body">
+      <div id="opportunityMap"><div class="empty-state"><div class="empty-icon">🗺️</div><p>Complete the feasibility scoring matrix above to generate the ranked opportunity map.</p></div></div>
+      <div class="gate" style="margin-top:1.5rem"><span class="gate-icon">📤</span><div>
+        <h4>Step 2 Handoff Checklist</h4>
+        <p>Quick Wins → Begin Step 3 (Shape AI Solutions) co-design sprints immediately. Strategic Bets → Schedule PoC sprint in next planning cycle. Non-AI blockers → Route to management or process improvement workstream. Monitor → Reassess next survey cycle.</p>
+      </div></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ─── STATE (localStorage-backed database) ─────────────────────────────────
+const DB_KEY = 'space_enterprise_v1';
+let db = JSON.parse(localStorage.getItem(DB_KEY) || '{}');
+function save() { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+function toast(msg, dur=2800) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), dur);
+}
+
+// ─── NAV ──────────────────────────────────────────────────────────────────
+const PANELS = ['setup','survey','p1','p2','p3','p4','p5'];
+function go(id) {
+  PANELS.forEach((p,i) => {
+    const el = document.getElementById('panel-'+p);
+    const btn = document.querySelectorAll('.nav-btn')[i];
+    const dot = document.getElementById('nd'+i);
+    if(el) el.classList.toggle('active', p===id);
+    if(btn) btn.classList.toggle('active', p===id);
+  });
+  if(id==='p1') buildP1();
+  if(id==='p2') buildThemesList();
+  if(id==='p3') buildTriMatrix();
+  if(id==='p4') buildJMSessions();
+  if(id==='p5') buildRegistry();
+  window.scrollTo({top:0,behavior:'smooth'});
+  updateNavDots();
+  populateFromDB();
+}
+function updateNavDots() {
+  const steps = ['setup','survey','p1','p2','p3','p4','p5'];
+  steps.forEach((s,i) => {
+    const d = document.getElementById('nd'+i);
+    if(d) d.classList.toggle('done', !!(db[s+'_complete']));
+  });
+}
+
+// ─── SETUP PAGE ───────────────────────────────────────────────────────────
+function saveSetup() {
+  db.company = document.getElementById('companyName').value;
+  db.team = document.getElementById('teamName').value;
+  db.cycle = document.getElementById('surveyCycle').value;
+  db.lead = document.getElementById('assessmentLead').value;
+  db.vpEmail = document.getElementById('vpEmail').value;
+  db.targetResp = document.getElementById('targetRespondents').value;
+  db.prevCycle = document.getElementById('prevCycle').value;
+  db.closeDate = document.getElementById('closeDate').value;
+  db.context = document.getElementById('assessmentContext').value;
+  db.setup_complete = !!(db.company && db.team);
+  save(); toast('✓ Setup saved');
+  updateSharedLink();
+  updateNavDots();
+  document.getElementById('surveyOrgLabel').textContent = (db.company||'') + (db.team ? ' · '+db.team : '') + (db.cycle ? ' · '+db.cycle : '');
+}
+
+function savePrevScores() {
+  db.prevS = parseFloat(document.getElementById('prevS').value)||null;
+  db.prevP = parseFloat(document.getElementById('prevP').value)||null;
+  db.prevA = parseFloat(document.getElementById('prevA').value)||null;
+  db.prevC = parseFloat(document.getElementById('prevC').value)||null;
+  db.prevE = parseFloat(document.getElementById('prevE').value)||null;
+  save(); toast('✓ Previous scores saved');
+}
+
+function updateSharedLink() {
+  const base = window.location.href.split('?')[0].split('#')[0];
+  const link = base + '?survey=1&org=' + encodeURIComponent(db.company||'') + '&team=' + encodeURIComponent(db.team||'') + '&cycle=' + encodeURIComponent(db.cycle||'');
+  document.getElementById('sharedLinkDisplay').textContent = link;
+  db.sharedLink = link; save();
+}
+
+function addSurveyLink() {
+  const name = document.getElementById('devName').value.trim();
+  const squad = document.getElementById('devSquad').value.trim();
+  const role = document.getElementById('devRole').value;
+  if(!name) { toast('⚠️ Enter a developer name or email first'); return; }
+  if(!db.recipients) db.recipients = [];
+  const id = 'resp_' + Date.now();
+  const base = window.location.href.split('?')[0].split('#')[0];
+  const link = base + '?survey=1&rid=' + id + '&org=' + encodeURIComponent(db.company||'');
+  db.recipients.push({ id, name, squad, role, link, status:'sent', submitted:null, scores:null });
+  save();
+  document.getElementById('devName').value='';
+  document.getElementById('devSquad').value='';
+  document.getElementById('devRole').value='';
+  buildRecipientsList();
+  toast('✓ Survey link generated for ' + name);
+}
+
+function copySharedLink() {
+  updateSharedLink();
+  const txt = document.getElementById('sharedLinkDisplay').textContent;
+  if(txt && txt !== 'Save setup first to generate survey links') {
+    navigator.clipboard?.writeText(txt).then(()=>toast('✓ Shared link copied to clipboard')).catch(()=>toast('Link: ' + txt));
+  } else { toast('⚠️ Save setup first'); }
+}
+
+function bulkImport() { toast('📤 In production: upload CSV with name,email,squad,role columns'); }
+
+function buildRecipientsList() {
+  const recs = db.recipients || [];
+  const empty = document.getElementById('recipientsEmpty');
+  const list = document.getElementById('recipientsList');
+  const summary = document.getElementById('responseSummary');
+  if(!recs.length) { empty.style.display='block'; list.style.display='none'; summary.style.display='none'; return; }
+  empty.style.display='none'; list.style.display='block'; summary.style.display='block';
+  const done = recs.filter(r=>r.status==='done').length;
+  document.getElementById('countSent').textContent = recs.length;
+  document.getElementById('countDone').textContent = done;
+  const target = parseInt(db.targetResp)||recs.length;
+  document.getElementById('countRate').textContent = Math.round(done/target*100)+'%';
+  const tbody = document.getElementById('recipientsBody');
+  tbody.innerHTML = recs.map(r=>`<tr>
+    <td>${r.name}</td><td>${r.squad||'—'}</td><td>${r.role||'—'}</td>
+    <td><span class="mono" style="font-size:10px;color:#0F766E">${r.link.substring(0,55)}...</span>
+    <button class="copy-btn btn-sm" style="padding:3px 8px;font-size:10px" onclick="copyLink('${r.id}')">Copy</button></td>
+    <td><span class="status-chip ${r.status==='done'?'status-done':r.status==='sent'?'status-sent':'status-pending'}">${r.status}</span></td>
+    <td>${r.submitted||'—'}</td>
+    <td><button class="btn btn-danger" style="padding:3px 8px;font-size:10px;border-radius:4px" onclick="markComplete('${r.id}')">Mark Done</button></td>
+  </tr>`).join('');
+}
+
+function copyLink(id) {
+  const rec = (db.recipients||[]).find(r=>r.id===id);
+  if(rec) navigator.clipboard?.writeText(rec.link).then(()=>toast('✓ Link copied')).catch(()=>toast(rec.link));
+}
+
+function markComplete(id) {
+  const rec = (db.recipients||[]).find(r=>r.id===id);
+  if(rec) { rec.status='done'; rec.submitted=new Date().toLocaleDateString(); }
+  save(); buildRecipientsList(); toast('✓ Marked as complete');
+}
+
+// ─── SURVEY QUESTIONS ─────────────────────────────────────────────────────
+const QUESTIONS = [
+  {n:1,d:'s',t:"How satisfied are you with your overall developer experience at this organisation?",sig:"Systemic friction & culture",tip:"Ask about day-to-day satisfaction with the working environment, not just the product or tech stack."},
+  {n:2,d:'s',t:"Do you feel proud of the work you ship each sprint?",sig:"Code quality & autonomy",tip:"Low scores here indicate developers are constrained by external factors (tooling, processes) rather than their own capability."},
+  {n:3,d:'s',t:"How often does work spill into your personal time due to blockers or pressure?",sig:"Workload & burnout risk",rev:true,tip:"Reverse-scored: 5=never (best). Higher frequency of overtime = worse outcome. Correlates with on-call toil and incident volume."},
+  {n:4,d:'s',t:"How well does your organisation support your professional growth as a developer?",sig:"Career & learning friction",tip:"Low scores here often precede attrition. Particularly important for senior developers."},
+  {n:5,d:'s',t:"How satisfied are you with the quality of your local development environment?",sig:"Tooling & environment quality",tip:"Low scores directly map to Efficiency dimension E5 (environment provisioning). Confirms tooling intervention candidates."},
+  {n:6,d:'s',t:"How often do you feel a sense of accomplishment at the end of a working day?",sig:"Flow & meaningful work",tip:"Low scores combined with high Activity = hidden toil pattern. Developers are busy but not on meaningful work."},
+  {n:7,d:'s',t:"How psychologically safe do you feel raising technical concerns or suggesting improvements?",sig:"Psychological safety — CRITICAL GATE",tip:"CRITICAL: If this scores below 2.5, all other survey scores are potentially understated. Replace Phase 4 workshops with anonymous 1:1 interviews."},
+  {n:8,d:'s',t:"How often do repetitive, low-value tasks dominate your workday?",sig:"Toil & automation opportunity",rev:true,tip:"Reverse-scored. High toil frequency = strongest indicator of AI automation ROI. Cross-reference with Activity dimension."},
+  {n:9,d:'s',t:"Would you recommend this organisation as a great place to work as a developer?",sig:"Developer NPS",tip:"The single-question developer NPS. Combine with other S-dimension scores to assess retention risk."},
+  {n:10,d:'s',t:"In your own words: what one thing most negatively impacts your day-to-day satisfaction?",sig:"Open-ended satisfaction blocker",open:true,tip:"The most valuable question in the survey. Preserve verbatim responses for Phase 2 theme clustering."},
+  {n:11,d:'p',t:"How often does your code pass review without requiring significant rework?",sig:"Code review friction",tip:"Low scores here combined with high C37 (API surprises) indicate requirements clarity is the root cause, not code quality."},
+  {n:12,d:'p',t:"How reliable is your code in production — how often are you paged for issues you introduced?",sig:"Production stability & testing",rev:true,tip:"Reverse-scored. Frequent paging = low score. Correlates with MTTR and change failure rate in DORA metrics."},
+  {n:13,d:'p',t:"Does your output this sprint reflect your true capability, or were you constrained by external blockers?",sig:"Capability vs. blocker gap",tip:"The most direct measure of external constraint. Low scores = developers are performing below their ceiling due to the environment, not skills."},
+  {n:14,d:'p',t:"How well do you understand the business or user impact of the features you build?",sig:"Requirements & context clarity",tip:"Low scores indicate a communication breakdown between product and engineering. Confirms C-dimension blockers."},
+  {n:15,d:'p',t:"How often do features you ship reach users without post-release hotfixes?",sig:"Release quality & test coverage",tip:"Low scores correlate with high change failure rate in DORA. Cross-reference with E-dimension (testing pipeline)."},
+  {n:16,d:'p',t:"How confident are you in the correctness of your code before submitting a PR?",sig:"Testing & debugging friction",tip:"Low confidence often indicates poor test coverage, no local test environment, or flaky tests that make the green/red signal untrustworthy."},
+  {n:17,d:'p',t:"How often does technical debt in the codebase reduce the quality of your current output?",sig:"Technical debt & codebase health",rev:true,tip:"Reverse-scored. Frequent TD impact = low score. This blocker is often NOT AI-addressable — route to platform investment planning."},
+  {n:18,d:'p',t:"How quickly can you understand an unfamiliar part of the codebase well enough to make a safe change?",sig:"Codebase onboarding — HIGH AI SIGNAL",tip:"Strongest single indicator of codebase explanation agent ROI. Correlate with IDE session length telemetry. Q18 below 2.5 = P1 AI intervention."},
+  {n:19,d:'p',t:"How often do you revisit completed work due to changing or unclear requirements?",sig:"Requirements churn & rework cost",rev:true,tip:"Reverse-scored. Frequent rework = low score. Confirms C-dimension requirements clarity blockers. Cross-validate with PR iteration count."},
+  {n:20,d:'p',t:"Describe a recent time when an external blocker prevented you from delivering quality work.",sig:"Open-ended performance blocker",open:true,tip:"Ask for a specific recent example, not a general complaint. The specificity of these responses is what makes Phase 2 theme clustering valuable."},
+  {n:21,d:'a',t:"What percentage of your working day feels genuinely productive (not waiting, interrupted, or in unrelated meetings)?",sig:"Effective vs. total time ratio",tip:"Below 50% effective time is a strong signal of systemic friction. Combine with E-dimension for root cause identification."},
+  {n:22,d:'a',t:"How many significant context switches do you make per day (switching between unrelated tasks or tools)?",sig:"Context-switch overload",rev:true,tip:"Reverse-scored. Many switches = low score. Cross-validate with IDE session length telemetry. Short sessions + many switches = confirmed toil pattern."},
+  {n:23,d:'a',t:"How many hours per sprint are lost to unplanned interruptions (Slack messages, ad-hoc requests, unexpected meetings)?",sig:"Interruption-driven toil",rev:true,tip:"Reverse-scored. More interruptions = lower score. Low A scores combined with low S = hidden toil — the most dangerous SPACE cross-pattern."},
+  {n:24,d:'a',t:"How much of your sprint time is spent on tasks clearly aligned with your team's top priority?",sig:"Priority alignment & task clarity",tip:"Low alignment often indicates unclear sprint planning (C dimension) or too many competing demands from multiple stakeholders."},
+  {n:25,d:'a',t:"How often do you work on more than 3 tasks simultaneously within a single sprint?",sig:"WIP overload",rev:true,tip:"Reverse-scored. High WIP = low score. WIP overload is a process problem, not an AI problem. Route to agile coaching, not AI backlog."},
+  {n:26,d:'a',t:"How much time per week do you spend on manual, repetitive tasks that could reasonably be automated?",sig:"Automation & AI opportunity",rev:true,tip:"Reverse-scored. High manual time = direct AI opportunity signal. Combine with E48 (knowledge search) and E41 (pipeline waits) to identify highest ROI interventions."},
+  {n:27,d:'a',t:"How often do you attend meetings that add no value to your work?",sig:"Meeting overhead & time waste",rev:true,tip:"Reverse-scored. Frequent valueless meetings = low score. This is often addressable via async knowledge agents (C35/C35 blockers)."},
+  {n:28,d:'a',t:"How often do you get to spend a continuous block of 2+ hours on deep focused coding work?",sig:"Deep work & flow availability",tip:"Below 3x per week indicates severe flow interruption. The single strongest predictor of developer satisfaction according to DORA research."},
+  {n:29,d:'a',t:"How much time in a typical sprint do you spend on debugging vs. writing new code?",sig:"Debugging-to-coding ratio",tip:"More than 30% time on debugging = strong signal for code quality tooling and AI debugging assistance."},
+  {n:30,d:'a',t:"Estimate: how many hours per sprint are lost to waiting (for reviews, builds, environments, or approvals)?",sig:"Queue & wait time — HIGH SIGNAL",rev:true,tip:"Reverse-scored. HIGH SIGNAL: Direct AI ROI calculation input. Multiply 'hours lost' × 'developer count' × 'hourly rate' for business case."},
+  {n:31,d:'c',t:"When blocked waiting for information or a decision, how long does it typically take to get unblocked?",sig:"Decision & response latency",tip:"Long unblocking times indicate either knowledge ownership gaps (C35) or approval process bottlenecks (E deployment). Both are AI-addressable."},
+  {n:32,d:'c',t:"How often do unclear requirements or acceptance criteria cause rework after you start coding?",sig:"Requirements clarity & rework cost",rev:true,tip:"Reverse-scored. Frequent rework = low score. STRONGEST AI SIGNAL for requirements clarity agents. Cross-validate with PR iteration count from DORA."},
+  {n:33,d:'c',t:"How collaborative and constructive do code reviews feel on your team?",sig:"Code review culture & friction",tip:"Adversarial reviews indicate absence of automated first-pass standardisation. AI auto-review tools normalise standards before human review."},
+  {n:34,d:'c',t:"How well do teams you depend on communicate changes that affect your work?",sig:"Cross-team dependency visibility",tip:"Low scores here are the strongest predictor of integration-time surprises. Confirm with 'tickets reopened after integration' metric from Jira."},
+  {n:35,d:'c',t:"How easy is it to find the right person to answer a technical question about an unfamiliar service?",sig:"Knowledge ownership discoverability",tip:"Low scores confirm codebase onboarding and knowledge search blockers. Who-owns-what agents (async knowledge agents) directly address this."},
+  {n:36,d:'c',t:"How fair and timely is the feedback you receive from your manager or tech lead?",sig:"Feedback loop quality",tip:"Low scores here are NOT addressable by AI. Route to management process improvement workstream. Do not put in AI backlog."},
+  {n:37,d:'c',t:"How often do API or service contract changes from other teams surprise you at integration time?",sig:"API contract & change notification",rev:true,tip:"Reverse-scored. Frequent surprises = low score. Confirm with Jira ticket reopening data. AI change impact analysis agents directly address this."},
+  {n:38,d:'c',t:"How effective are your sprint planning and backlog refinement sessions at giving you clarity for the week ahead?",sig:"Planning effectiveness",tip:"Low planning effectiveness = root cause of many downstream P and E blockers. AI requirements agents deployed at planning time have highest multiplier effect."},
+  {n:39,d:'c',t:"How well does your on-call rotation distribute burden fairly across the team?",sig:"On-call toil & rotation health",tip:"Unfair on-call is a management/process problem, not AI-addressable. However, AI RCA agents reduce total on-call hours even in unfair rotations."},
+  {n:40,d:'c',t:"Describe the biggest communication or collaboration breakdown that blocked your productivity recently.",sig:"Open-ended coordination blocker",open:true,tip:"Focus on cross-team breakdowns, not interpersonal issues. The most actionable themes here involve information flow and decision latency."},
+  {n:41,d:'e',t:"How often are you blocked waiting for a build or test pipeline to complete before you can continue?",sig:"Build & pipeline wait time — HIGH SIGNAL",rev:true,tip:"Reverse-scored. Frequent waits = low score. HIGHEST AI ROI. Predictive test selection (Launchable/BuildPulse) can cut build time 50–80%."},
+  {n:42,d:'e',t:"How much time per week is wasted on flaky tests that fail for reasons unrelated to your change?",sig:"Flaky test toil",rev:true,tip:"Reverse-scored. Above 10% flaky rate destroys trust in the CI signal. Above 20% means developers ignore red builds — a serious quality risk."},
+  {n:43,d:'e',t:"How clearly do CI/CD failure messages explain what went wrong and how to fix it?",sig:"Pipeline error observability",tip:"Low scores = cryptic error messages. AI failure explanation agents translate stack traces to plain-English root cause in seconds."},
+  {n:44,d:'e',t:"How quickly can you provision or access a fresh development or test environment when you need one?",sig:"Environment provisioning wait",tip:"Long provisioning times indicate manual or unautomated infrastructure. AI demand prediction and pre-warming can eliminate this wait."},
+  {n:45,d:'e',t:"How much time do you spend per incident on root cause analysis before you can begin remediation?",sig:"Incident RCA speed — HIGH SIGNAL",rev:true,tip:"Reverse-scored. MTTR is the DORA metric counterpart. AI RCA agents correlate logs + deploys + service graph to surface root cause in minutes."},
+  {n:46,d:'e',t:"How well does your toolchain support staying in a state of flow — does switching between tools break your concentration?",sig:"Toolchain integration & flow",tip:"Low scores indicate fragmented toolchain. The solution is integration into existing tools (Step 4), not adding another standalone tool."},
+  {n:47,d:'e',t:"How confident are you in understanding the blast radius of your code changes before merging?",sig:"Change impact analysis",tip:"Low confidence = high change failure rate. AI change risk scoring (Harness CV, LinearB) enables low-risk changes to skip approval queues."},
+  {n:48,d:'e',t:"How much time do you spend searching for documentation, internal wikis, or past decisions before finding what you need?",sig:"Knowledge discoverability & search",rev:true,tip:"Reverse-scored. HIGH SIGNAL: Semantic search agents (Glean, Sourcegraph) address this directly. Confirm with Slack/wiki search volume data."},
+  {n:49,d:'e',t:"How often does local environment config drift or instability block you from running the project?",sig:"Local environment reliability",rev:true,tip:"Reverse-scored. Environment reliability is often a Dev Containers or Nix problem, not an AI problem. Route to platform tooling investment."},
+  {n:50,d:'e',t:"If you could wave a magic wand and fix one tooling or process inefficiency tomorrow, what would it be?",sig:"Open-ended efficiency blocker",open:true,tip:"The most forward-looking question. Responses often name blockers that the structured Likert questions missed. Preserve verbatim."},
+];
+const DIM_INFO={
+  s:{l:"S — Satisfaction & Wellbeing",badge:"dp-s",d:"How developers feel about their work, tools, and culture"},
+  p:{l:"P — Performance & Outcomes",badge:"dp-p",d:"Quality and reliability of work delivered — not just volume"},
+  a:{l:"A — Activity & Output Patterns",badge:"dp-a",d:"Visible work and time distribution — always pair with Satisfaction"},
+  c:{l:"C — Communication & Collaboration",badge:"dp-c",d:"Team health, handoffs, and cross-functional coordination"},
+  e:{l:"E — Efficiency & Flow",badge:"dp-e",d:"How well tooling and pipelines support uninterrupted work"},
+};
+const REVERSE_QS=new Set([3,8,12,17,19,22,23,25,26,27,30,32,37,41,42,45,48,49]);
+const OPEN_QS=new Set([10,20,40,50]);
+
+function buildSurvey() {
+  const c = document.getElementById('surveyQsContainer');
+  if(!c) return;
+  let html='', lastD='';
+  QUESTIONS.forEach(q=>{
+    if(q.d!==lastD){
+      const di=DIM_INFO[q.d];
+      html+=`<div class="survey-section-hdr"><span class="dim-pill ${di.badge}">${q.d.toUpperCase()}</span><div><strong style="font-family:'Fraunces',serif;font-size:1rem">${di.l}</strong><div class="muted" style="font-size:11px">${di.d}</div></div></div>`;
+      lastD=q.d;
+    }
+    html+=`<div class="q-item" id="qi-${q.n}">
+      <div class="q-row"><span class="q-n">Q${q.n}</span><span class="q-t" data-tip="${q.tip||''}">${q.t}</span></div>
+      <span class="sig-tag">↳ ${q.sig}${q.rev?' · reverse-scored':''}</span>`;
+    if(q.open){
+      html+=`<textarea class="q-open" id="ans-${q.n}" placeholder="Type your response here... (your exact words are valuable — do not edit for professionalism)" oninput="markOpen(${q.n},'${q.d}')"></textarea>`;
+    } else {
+      html+=`<div class="scale-wrap"><span class="scale-lbl">${q.rev?'Most often / Worst':'Strongly disagree'}</span><div class="scale-btns" id="sc-${q.n}"></div><span class="scale-lbl r">${q.rev?'Never / Best':'Strongly agree'}</span></div>`;
+    }
+    html+='</div>';
+  });
+  c.innerHTML=html;
+  QUESTIONS.filter(q=>!q.open).forEach(q=>{
+    const cont=document.getElementById('sc-'+q.n);
+    if(!cont) return;
+    for(let v=1;v<=5;v++){
+      const b=document.createElement('button');
+      b.className='sb';b.textContent=v;
+      b.setAttribute('data-tip',`Score ${v}/5 — ${v===1?'Worst outcome':v===5?'Best outcome':'Moderate'}`);
+      b.onclick=()=>selectAns(q.n,v,q.d);
+      cont.appendChild(b);
+    }
+  });
+}
+
+if(!db.surveyAnswers) db.surveyAnswers={};
+function selectAns(qn,val,dim){
+  db.surveyAnswers[qn]=val; save();
+  const sc=document.getElementById('sc-'+qn);
+  if(sc) sc.querySelectorAll('.sb').forEach(b=>{b.className='sb';if(parseInt(b.textContent)===val)b.classList.add('sel-'+dim);});
+  const qi=document.getElementById('qi-'+qn);
+  if(qi){qi.className='q-item answered ans-'+dim;}
+  updateSurveyProg();
+}
+function markOpen(qn,dim){
+  const v=document.getElementById('ans-'+qn)?.value?.trim();
+  db.surveyAnswers[qn]=v||null; save();
+  const qi=document.getElementById('qi-'+qn);
+  if(qi) qi.className=v?'q-item answered ans-'+dim:'q-item';
+  updateSurveyProg();
+}
+function updateSurveyProg(){
+  const ans=Object.values(db.surveyAnswers).filter(v=>v!==null&&v!==undefined&&v!=='').length;
+  const pct=Math.round(ans/50*100);
+  const f=document.getElementById('surveyProgFill');const t=document.getElementById('surveyProgressText');
+  if(f)f.style.width=pct+'%';if(t)t.textContent=`${ans} / 50`;
+}
+function submitSurvey(){
+  const dimR={S:[],P:[],A:[],C:[],E:[]};
+  QUESTIONS.filter(q=>!q.open).forEach(q=>{
+    const raw=db.surveyAnswers[q.n];
+    if(!raw) return;
+    let sc=parseInt(raw);
+    if(REVERSE_QS.has(q.n)) sc=6-sc;
+    dimR[q.d.toUpperCase()].push(sc);
+  });
+  const avg=a=>a.length?+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1):null;
+  db.scores={};
+  ['S','P','A','C','E'].forEach(d=>{const a=avg(dimR[d]);if(a)db.scores[d]=a;});
+  db.survey_complete=true;
+  save(); toast('✓ Survey submitted — scores calculated');
+  updateNavDots();
+  go('p1');
+}
+
+// ─── PHASE 1 TRIAGE ───────────────────────────────────────────────────────
+const BANDS=[
+  {max:2.0,l:"Critical",cls:"b-crit",action:"🚨 Emergency: 48hr deep-dive. Journey mapping within 5 days."},
+  {max:2.9,l:"Significant",cls:"b-sig",action:"Investigation within 2 weeks. Cross-validate with 2+ quant signals."},
+  {max:3.4,l:"Moderate",cls:"b-mod",action:"Monitor trend. Explore next cycle. Watch for further decline."},
+  {max:4.2,l:"Healthy",cls:"b-hlt",action:"Cross-validate with DORA. Watch for drift between cycles."},
+  {max:5.0,l:"Excellent",cls:"b-exc",action:"Benchmark and document what is working. Replicate across teams."},
+];
+const DIM_NAMES={S:"S — Satisfaction",P:"P — Performance",A:"A — Activity",C:"C — Communication",E:"E — Efficiency"};
+const DIM_COLS={S:"var(--teal)",P:"var(--purple)",A:"var(--amber)",C:"var(--red)",E:"var(--blue)"};
+
+function buildP1(){
+  const sc=db.scores||{};
+  const prev={S:db.prevS,P:db.prevP,A:db.prevA,C:db.prevC,E:db.prevE};
+  const cont=document.getElementById('p1ScoresDisplay');
+  if(!cont) return;
+  if(!Object.keys(sc).length){
+    cont.innerHTML='<div class="empty-state"><div class="empty-icon">📊</div><p>No scores found. Complete the survey or enter scores in the Upload tab.</p></div>';
+    return;
+  }
+  let html=`<div class="scores-display">`;
+  ['S','P','A','C','E'].forEach(d=>{
+    const s=sc[d];const b=s?BANDS.find(x=>s<=x.max):null;
+    const pv=prev[d];const drop=pv&&s?+(pv-s).toFixed(1):null;
+    const trendTxt=drop?`${drop>0?'↓':'↑'} ${Math.abs(drop)}`:'—';
+    html+=`<div class="score-cell sc-${d.toLowerCase()}">
+      <div class="sl">${d}</div>
+      <div class="sn">${DIM_NAMES[d].split(' — ')[1]}</div>
+      <div class="sv">${s||'—'}</div>
+      ${b?`<span class="sb2 ${b.cls}">${b.l}</span>`:''}
+      ${drop&&drop>0.39?`<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ Drop: ${trendTxt}</div>`:(drop?`<div style="font-size:10px;color:var(--muted);margin-top:4px">${trendTxt}</div>`:'')}
+    </div>`;
+  });
+  html+='</div>';
+  html+=`<table class="triage-tbl"><thead><tr><th>Dimension</th><th>Score</th><th>Band</th><th>Priority</th><th>Trend vs Prev</th><th>Drop >0.4?</th><th>Immediate Action</th></tr></thead><tbody>`;
+  ['S','P','A','C','E'].forEach(d=>{
+    const s=sc[d];if(!s){html+=`<tr><td>${DIM_NAMES[d]}</td><td colspan="6" style="color:var(--muted)">No score recorded</td></tr>`;return;}
+    const b=BANDS.find(x=>s<=x.max);
+    const pv=prev[d];const drop=pv?+(pv-s).toFixed(1):null;
+    const bigDrop=drop&&drop>0.39;
+    const prio=(s<2.9||bigDrop)?`<span class="p1">P1</span>`:(s<3.5?`<span class="p2">P2</span>`:`<span class="p3">P3</span>`);
+    const trendD=drop?`${drop>0?'↓ ':'↑ '}${Math.abs(drop)} pts`:'No prev data';
+    const dropFlag=bigDrop?`<span style="color:var(--red);font-weight:700">⚠️ YES</span>`:`<span style="color:var(--muted)">No</span>`;
+    html+=`<tr><td style="font-weight:600;color:${DIM_COLS[d]}">${DIM_NAMES[d]}</td><td><span class="sb2 ${b.cls}">${s}</span></td><td>${b.l}</td><td>${prio}</td><td class="mono">${trendD}</td><td>${dropFlag}</td><td style="font-size:11px">${b.action}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  cont.innerHTML=html;
+
+  // Cross patterns
+  const cp=document.getElementById('crossPatternOutput');
+  const alerts=[];
+  if((sc.S<2.9)&&(sc.E<2.9)) alerts.push({t:'alert-red',m:'🔴 Low S + Low E — Tooling is actively harming developer wellbeing. This is the highest-ROI AI intervention target in the SPACE framework. Prioritise E-dimension interventions first.'});
+  if((sc.S<2.9)&&(sc.P>=3.3)) alerts.push({t:'alert-amber',m:'🟡 Low S + Moderate/Healthy P — Unsustainable heroics pattern. Developers are delivering despite the environment, not because of it. Attrition risk not visible in output metrics.'});
+  if((sc.A>3.5)&&(sc.S<2.9)) alerts.push({t:'alert-amber',m:'🟠 High A + Low S — Hidden toil pattern. Developers are busy but not on meaningful work. Velocity reviews would celebrate this team while they burn out.'});
+  if((sc.S<2.9)&&(sc.C<2.9)) alerts.push({t:'alert-red',m:'🔴 Low S + Low C — Coordination is destroying satisfaction. Handoff friction, unclear requirements, and knowledge gaps are the primary satisfaction drivers here.'});
+  if(!alerts.length) alerts.push({t:'alert-green',m:'✓ No high-risk cross-dimension patterns detected at current score levels. Monitor trend between cycles.'});
+  cp.innerHTML=alerts.map(a=>`<div class="alert ${a.t}">${a.m}</div>`).join('');
+  
+  // Auto-populate exec summary
+  document.getElementById('execTo').value=db.vpEmail||'';
+  document.getElementById('execSubject').value=`SPACE Survey Results — ${db.company||'[Company]'} ${db.cycle||'[Cycle]'} — Initial Triage`;
+  db.p1_complete=true; save(); updateNavDots();
+}
+
+// ─── PHASE 2 — THEMES ─────────────────────────────────────────────────────
+if(!db.themes) db.themes=[];
+function addTheme(){
+  const desc=document.getElementById('t_desc').value.trim();
+  const src=document.getElementById('t_source').value;
+  const cnt=parseInt(document.getElementById('t_count').value)||0;
+  const quote=document.getElementById('t_quote').value.trim();
+  const jtbd=document.getElementById('t_jtbd').value.trim();
+  if(!desc||!src||!cnt){toast('⚠️ Description, source question, and respondent count are required');return;}
+  db.themes.push({id:'th_'+Date.now(),desc,src,cnt,quote,jtbd,added:new Date().toLocaleDateString()});
+  save();
+  ['t_desc','t_source','t_count','t_quote','t_jtbd'].forEach(id=>document.getElementById(id)?document.getElementById(id).value='':null);
+  buildThemesList(); toast('✓ Theme added');
+}
+function buildThemesList(){
+  const total=parseInt(db.targetResp)||38;
+  const cont=document.getElementById('themesList');
+  const thresh=document.getElementById('thresholdSummary');
+  if(!cont) return;
+  if(!(db.themes||[]).length){
+    cont.innerHTML='<div class="empty-state"><div class="empty-icon">🗂️</div><p>No themes added yet.</p></div>';
+    if(thresh) thresh.innerHTML='<div class="empty-state"><div class="empty-icon">📐</div><p>Add themes above to see threshold status.</p></div>';
+    return;
+  }
+  const sorted=[...db.themes].sort((a,b)=>b.cnt-a.cnt);
+  cont.innerHTML=sorted.map(th=>{
+    const pct=(th.cnt/total*100).toFixed(0);
+    const status=pct>=30?'PROMOTED ✓':pct>=15?'INVESTIGATE ~':'MONITOR';
+    const sc=pct>=30?'alert-red':pct>=15?'alert-amber':'';
+    return `<div class="alert ${sc}" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
+        <strong style="font-size:13px">${th.desc}</strong>
+        <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700">${pct}% (${th.cnt}/${total}) · ${status}</span>
+      </div>
+      <div style="font-size:11px;color:var(--ink2);margin-top:4px">Source: ${th.src}</div>
+      ${th.quote?`<div style="font-style:italic;font-size:12px;margin-top:4px;padding-left:8px;border-left:2px solid rgba(0,0,0,.15)">"${th.quote}"</div>`:''}
+      ${th.jtbd?`<div style="font-size:11px;margin-top:5px;color:var(--teal-dk);font-weight:500">JTBD: ${th.jtbd}</div>`:''}
+      <button class="btn btn-outline btn-sm" style="margin-top:8px;font-size:10px" onclick="removeTheme('${th.id}')">Remove</button>
+    </div>`;
+  }).join('');
+  if(thresh){
+    thresh.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:1rem">
+      ${[['PROMOTED ✓',30,'green'],['INVESTIGATE ~',15,'amber'],['MONITOR',0,'muted']].map(([lbl,thr,col])=>{
+        const ct=sorted.filter(t=>thr===30?(t.cnt/total*100)>=30:thr===15?(t.cnt/total*100)>=15&&(t.cnt/total*100)<30:(t.cnt/total*100)<15).length;
+        return `<div class="card-sm" style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:1.8rem;font-weight:700;color:var(--${col})">${ct}</div><div class="muted">${lbl}</div></div>`;
+      }).join('')}
+    </div>`;
+  }
+  db.p2_complete=true; save(); updateNavDots();
+}
+function removeTheme(id){ db.themes=db.themes.filter(t=>t.id!==id); save(); buildThemesList(); toast('Theme removed'); }
+function saveMisalign(){ db.misalignNotes=document.getElementById('misalignNotes').value; save(); toast('✓ Notes saved'); }
+
+// ─── PHASE 3 — TRIANGULATION ──────────────────────────────────────────────
+if(!db.triRows) db.triRows=[];
+function saveDoraData(){
+  db.dora={
+    leadtime:document.getElementById('dora_leadtime').value,
+    deplfreq:document.getElementById('dora_deplfreq').value,
+    mttr:document.getElementById('dora_mttr').value,
+    cfr:document.getElementById('dora_cfr').value,
+    buildtime:document.getElementById('dora_buildtime').value,
+    flaky:document.getElementById('dora_flaky').value,
+    prIter:document.getElementById('dora_prIter').value,
+    prLag:document.getElementById('dora_prLag').value,
+    ideSession:document.getElementById('dora_ideSession').value,
+  };
+  save(); toast('✓ DORA data saved');
+}
+function addTriRow(){
+  const bl=document.getElementById('tri_blocker').value.trim();
+  if(!bl){toast('⚠️ Blocker name required');return;}
+  const sv=document.getElementById('tri_survey').value;
+  const qt=document.getElementById('tri_quant').value;
+  const tx=document.getElementById('tri_text').value;
+  const ev=document.getElementById('tri_evidence').value.trim();
+  const cnt=[sv,qt,tx].filter(x=>x==='Y').length+[sv,qt,tx].filter(x=>x==='P').length*0.5;
+  const decision=cnt>=2?'✓ Registry':cnt>=1.5?'~ P2 Registry':'Investigate';
+  db.triRows.push({id:'tri_'+Date.now(),bl,sv,qt,tx,ev,cnt,decision});
+  save(); buildTriMatrix(); toast('✓ Added to triangulation matrix');
+  ['tri_blocker','tri_evidence'].forEach(id=>document.getElementById(id)?document.getElementById(id).value='':null);
+}
+function buildTriMatrix(){
+  const cont=document.getElementById('triMatrixList');
+  if(!cont) return;
+  if(!(db.triRows||[]).length){
+    cont.innerHTML='<div class="empty-state"><div class="empty-icon">🔺</div><p>No blockers in triangulation matrix yet. Add promoted themes from Phase 2.</p></div>';
+    return;
+  }
+  const sigLabel={Y:'<span style="color:var(--green);font-weight:700">✓</span>',P:'<span style="color:var(--amber)">~</span>',N:'<span style="color:var(--muted)">—</span>'};
+  cont.innerHTML=`<div class="tri-row hdr"><div>Blocker</div><div>Survey</div><div>Quant</div><div>Open Text</div><div>Sources</div><div>Decision</div></div>`+
+  db.triRows.map(r=>{
+    const decCls=r.decision.includes('✓')?'p1':(r.decision.includes('P2')?'p2':'p3');
+    return `<div class="tri-row"><div style="font-size:11px">${r.bl}</div><div>${sigLabel[r.sv]||'—'}</div><div>${sigLabel[r.qt]||'—'} <span style="font-size:10px;color:var(--muted)">${r.ev?r.ev.substring(0,20)+'…':''}</span></div><div>${sigLabel[r.tx]||'—'}</div><div style="font-weight:700;color:var(--teal)">${r.cnt>=2?Math.round(r.cnt)+'/3':'~'}</div><div><span class="${decCls}">${r.decision}</span></div></div>`;
+  }).join('');
+  db.p3_complete=true; save(); updateNavDots();
+}
+
+// ─── PHASE 4 — JOURNEY MAPPING ────────────────────────────────────────────
+if(!db.jmSessions) db.jmSessions=[];
+if(!db.jmSteps) db.jmSteps=[];
+function addJMSession(){
+  const team=document.getElementById('jms_team').value.trim();
+  if(!team){toast('⚠️ Team name required');return;}
+  const id='jms_'+Date.now();
+  db.jmSessions.push({id,team,date:document.getElementById('jms_date').value,count:document.getElementById('jms_count').value,facilitator:document.getElementById('jms_facilitator').value,steps:[]});
+  save(); buildJMSessions(); toast('✓ Session created: '+team);
+  ['jms_team','jms_date','jms_count','jms_facilitator'].forEach(x=>document.getElementById(x)?document.getElementById(x).value='':null);
+}
+function buildJMSessions(){
+  const cont=document.getElementById('jmSessionsList');
+  const sel=document.getElementById('jmSessionSelect');
+  if(!cont||!sel) return;
+  if(!(db.jmSessions||[]).length){
+    cont.innerHTML='<div class="empty-state"><div class="empty-icon">📅</div><p>No sessions created yet.</p></div>';
+    sel.innerHTML='<option value="">No sessions yet</option>';
+    return;
+  }
+  cont.innerHTML=db.jmSessions.map(s=>`
+    <div class="card-sm" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="flex:1"><strong>${s.team}</strong><div class="muted">${s.date?new Date(s.date).toLocaleDateString():'Date TBD'} · ${s.count||'?'} developers · Facilitator: ${s.facilitator||'TBD'}</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="selectSession('${s.id}')">📝 Map Journey</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red)" onclick="removeSession('${s.id}')">Remove</button>
+      </div>
+    </div>`).join('');
+  sel.innerHTML='<option value="">Select session</option>'+db.jmSessions.map(s=>`<option value="${s.id}">${s.team}</option>`).join('');
+}
+function removeSession(id){ db.jmSessions=db.jmSessions.filter(s=>s.id!==id); save(); buildJMSessions(); toast('Session removed'); }
+function selectSession(id){
+  document.getElementById('jmSessionSelect').value=id;
+  document.querySelectorAll('.activity-block')[1]?.classList.remove('activity-collapsed');
+  buildJMSteps(id);
+  window.scrollTo({top:document.getElementById('act4-2').offsetTop-80,behavior:'smooth'});
+}
+function addJMStep(){
+  const sessId=document.getElementById('jmSessionSelect').value;
+  const name=document.getElementById('jmst_name').value.trim();
+  if(!sessId||!name){toast('⚠️ Select a session and enter a step name');return;}
+  if(!db.jmSteps) db.jmSteps=[];
+  db.jmSteps.push({
+    id:'jmstep_'+Date.now(),sessId,
+    name,time:document.getElementById('jmst_time').value,
+    friction:document.getElementById('jmst_friction').value,
+    dots:parseInt(document.getElementById('jmst_dots').value)||0,
+    quote:document.getElementById('jmst_quote').value.trim(),
+    root:document.getElementById('jmst_root').value.trim(),
+    jtbd:document.getElementById('jmst_jtbd').value.trim(),
+  });
+  save(); buildJMSteps(sessId); buildJMConfirmed(); toast('✓ Journey step added');
+  ['jmst_name','jmst_time','jmst_dots','jmst_quote','jmst_root','jmst_jtbd'].forEach(x=>document.getElementById(x)?document.getElementById(x).value='':null);
+  db.p4_complete=true; save(); updateNavDots();
+}
+function buildJMSteps(sessId){
+  const cont=document.getElementById('jmStepsList');
+  if(!cont) return;
+  const steps=(db.jmSteps||[]).filter(s=>s.sessId===sessId).sort((a,b)=>b.dots-a.dots);
+  if(!steps.length){cont.innerHTML='<div class="empty-state"><div class="empty-icon">👣</div><p>No steps recorded for this session yet. Add steps below.</p></div>';return;}
+  const fricIcon={red:'🔴',amber:'🟡',green:'🟢'};
+  cont.innerHTML=steps.map((s,i)=>`<div class="jm-step">
+    <div class="jm-num">${i+1}</div>
+    <div class="jm-body" style="flex:1">
+      <h5>${s.name} <span style="font-size:11px;color:var(--muted)">· ${s.time||'time not recorded'} · ${s.dots} dots</span></h5>
+      <div style="margin-top:2px">${fricIcon[s.friction]||'⬜'} ${s.friction==='red'?'<strong style="color:var(--red)">Major pain</strong>':s.friction==='amber'?'<span style="color:var(--amber)">Wait / friction</span>':'<span style="color:var(--green)">Smooth</span>'}</div>
+      ${s.quote?`<div class="theme-quote" style="margin-top:6px">"${s.quote}"</div>`:''}
+      ${s.root?`<div style="font-size:11px;margin-top:5px;color:var(--teal-dk);font-style:italic">Root cause: ${s.root}</div>`:''}
+      ${s.jtbd?`<div style="font-size:11px;margin-top:3px;color:var(--purple);font-weight:500">JTBD: ${s.jtbd}</div>`:''}
+    </div>
+    <button class="btn btn-outline btn-sm" style="font-size:10px;align-self:flex-start;color:var(--red);border-color:var(--red)" onclick="removeJMStep('${s.id}')">✕</button>
+  </div>`).join('');
+}
+function removeJMStep(id){ db.jmSteps=db.jmSteps.filter(s=>s.id!==id); save(); const sel=document.getElementById('jmSessionSelect').value; if(sel) buildJMSteps(sel); buildJMConfirmed(); toast('Step removed'); }
+function buildJMConfirmed(){
+  const cont=document.getElementById('jmConfirmedList');
+  if(!cont) return;
+  const confirmed=(db.jmSteps||[]).filter(s=>s.friction==='red'||s.friction==='amber').sort((a,b)=>b.dots-a.dots);
+  if(!confirmed.length){cont.innerHTML='<div class="empty-state"><div class="empty-icon">📌</div><p>Red and amber journey steps will appear here as blocker candidates.</p></div>';return;}
+  cont.innerHTML=`<p class="muted" style="margin-bottom:1rem;font-size:12px">These blockers are candidates for the Phase 5 registry. Cross-reference with Phase 3 triangulation matrix before adding.</p>`+
+  confirmed.map(s=>`<div class="card-sm" style="border-left:3px solid ${s.friction==='red'?'var(--red)':'var(--amber)'};margin-bottom:10px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div><strong>${s.name}</strong> <span class="muted">· ${s.dots} votes · ${s.time||''}</span>
+      ${s.jtbd?`<div style="font-size:11px;color:var(--teal-dk);margin-top:3px">JTBD: ${s.jtbd}</div>`:''}
+      </div>
+      <button class="btn btn-teal btn-sm" style="font-size:10px" onclick="promoteToRegistry('${s.id}')">+ Add to P5 Registry</button>
+    </div>
+  </div>`).join('');
+}
+function promoteToRegistry(stepId){
+  const step=(db.jmSteps||[]).find(s=>s.id===stepId);
+  if(!step){toast('Step not found');return;}
+  if(!db.registry) db.registry=[];
+  db.registry.push({id:'reg_'+Date.now(),name:step.name,phase:'',dim:'',reach:'',hrs:step.time,sources:'2 of 3 (Journey + Survey)',aifit:'YES',priority:'P1',scores:{},classification:'',promoted:true,jtbd:step.jtbd||''});
+  save(); go('p5'); toast('✓ Blocker promoted to Phase 5 registry');
+}
+
+// ─── PHASE 5 — REGISTRY ───────────────────────────────────────────────────
+if(!db.registry) db.registry=[];
+function addRegistryEntry(){
+  const name=document.getElementById('reg_name').value.trim();
+  if(!name){toast('⚠️ Blocker name required');return;}
+  db.registry.push({
+    id:'reg_'+Date.now(),name,
+    phase:document.getElementById('reg_phase').value,
+    dim:document.getElementById('reg_dim').value,
+    reach:document.getElementById('reg_reach').value,
+    hrs:document.getElementById('reg_hrs').value,
+    sources:document.getElementById('reg_sources').value,
+    aifit:document.getElementById('reg_aifit').value,
+    priority:'',scores:{tm:null,ie:null,ce:null,da:null,la:null},
+    classification:'',composite:null,
+  });
+  save(); buildRegistry(); toast('✓ Blocker added to registry');
+  ['reg_name','reg_phase','reg_dim','reg_reach','reg_hrs'].forEach(x=>document.getElementById(x)?document.getElementById(x).value='':null);
+}
+function buildRegistry(){
+  const cont=document.getElementById('registryList');
+  const feas=document.getElementById('feasibilityMatrix');
+  const opp=document.getElementById('opportunityMap');
+  if(!cont) return;
+  const regs=db.registry||[];
+  if(!regs.length){
+    cont.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><p>No blockers in registry yet. Add validated blockers below, or promote from Phase 4 journey map.</p></div>';
+    if(feas) feas.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><p>Registry empty. Add blockers above first.</p></div>';
+    if(opp) opp.innerHTML='<div class="empty-state"><div class="empty-icon">🗺️</div><p>Complete scoring matrix to generate map.</p></div>';
+    return;
+  }
+  // Registry table
+  cont.innerHTML=`<div style="overflow-x:auto"><table class="reg-tbl">
+    <thead><tr><th>#</th><th>Blocker</th><th>SDLC</th><th>Dim</th><th>Reach</th><th>Hrs/Sprint</th><th>Sources</th><th>AI Fit</th><th>Priority</th></tr></thead>
+    <tbody>${regs.map((r,i)=>`<tr>
+      <td>${i+1}</td><td style="font-weight:600">${r.name}</td><td>${r.phase||'—'}</td>
+      <td>${r.dim||'—'}</td><td>${r.reach||'—'}</td><td>${r.hrs||'—'}</td>
+      <td>${r.sources}</td>
+      <td style="color:${r.aifit==='YES'?'var(--green)':r.aifit==='INV'?'var(--amber)':'var(--muted)'};font-weight:600">${r.aifit==='YES'?'✓ YES':r.aifit==='INV'?'~ Investigate':'✗ NO'}</td>
+      <td><span class="${r.priority==='P1'?'p1':r.priority==='P2'?'p2':'p3'}">${r.priority||'—'}</span></td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+
+  // Feasibility scoring matrix
+  const aiRows=regs.filter(r=>r.aifit==='YES'||r.aifit==='INV');
+  if(aiRows.length){
+    feas.innerHTML=`<p class="muted" style="margin-bottom:1rem;font-size:12px">Score each dimension 1–5. Click a score to select it. Weighted composite calculates automatically.</p>`+
+    aiRows.map(r=>{
+      const sc=r.scores||{};
+      const dims=[['tm','Tool Maturity','25%','Does a GA AI product exist for this exact problem?'],['ie','Integration Ease','20%','How easily does it integrate with existing dev tools?'],['ce','Cost Efficiency','25%','Licensing cost vs developer hours saved. ROI within 12 months?'],['da','Data Availability','15%','Is the relevant context data accessible to the AI agent?'],['la','Dev Adoption Likelihood','15%','Will developers actually use this in their daily workflow?']];
+      const comp=Object.keys(sc).length>=5?
+        +(sc.tm*0.25+sc.ie*0.20+sc.ce*0.25+sc.da*0.15+sc.la*0.15).toFixed(1):null;
+      const cls=comp?comp>=8?'Quick Win':comp>=6?'Strategic Bet':comp>=4?'Monitor':'Defer':'—';
+      if(comp) { r.composite=comp; r.classification=cls; }
+      return `<div class="card-sm" style="margin-bottom:1rem">
+        <strong style="font-size:13px">${r.name}</strong>
+        ${dims.map(([k,l,w,tip])=>`<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:600;min-width:140px" data-tip="${tip}">${l} <span class="muted">${w}</span></span>
+          <div style="display:flex;gap:4px">${[1,2,3,4,5].map(v=>`<div class="feas-score ${sc[k]===v?'fs'+v:''}" style="${sc[k]===v?'':'background:var(--bg);border:1px solid var(--border)'}" onclick="scoreReg('${r.id}','${k}',${v})">${v}</div>`).join('')}</div>
+        </div>`).join('')}
+        ${comp!==null?`<div style="margin-top:10px;display:flex;align-items:center;gap:10px"><strong style="font-family:'Fraunces',serif;font-size:1.3rem;color:${comp>=8?'var(--green)':comp>=6?'var(--teal)':'var(--amber)'}">${comp}/5.0</strong> <span style="background:${comp>=8?'var(--green-lt)':comp>=6?'var(--teal-lt)':'var(--amber-lt)'};color:${comp>=8?'var(--green)':comp>=6?'var(--teal-dk)':'var(--amber)'};padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700">${cls}</span></div>`:'<div class="muted" style="margin-top:8px;font-size:11px">Score all 5 dimensions to see composite score</div>'}
+      </div>`;
+    }).join('');
+    save();
+
+    // Opportunity map
+    const scored=aiRows.filter(r=>r.classification);
+    if(scored.length){
+      const qw=scored.filter(r=>r.classification==='Quick Win').length;
+      const sb=scored.filter(r=>r.classification==='Strategic Bet').length;
+      const mon=scored.filter(r=>r.classification==='Monitor').length;
+      const nonAI=regs.filter(r=>r.aifit==='NO').length;
+      opp.innerHTML=`<div class="grid3">
+        <div class="card-sm" style="background:var(--green-lt);text-align:center"><div style="font-family:'Fraunces',serif;font-size:2rem;font-weight:700;color:var(--green)">${qw}</div><div style="color:var(--green);font-weight:600">Quick Wins</div><div class="muted" style="font-size:11px;margin-top:3px">Start Step 3 co-design now</div></div>
+        <div class="card-sm" style="background:var(--teal-lt);text-align:center"><div style="font-family:'Fraunces',serif;font-size:2rem;font-weight:700;color:var(--teal-dk)">${sb}</div><div style="color:var(--teal-dk);font-weight:600">Strategic Bets</div><div class="muted" style="font-size:11px;margin-top:3px">Plan PoC sprint next cycle</div></div>
+        <div class="card-sm" style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:2rem;font-weight:700;color:var(--amber)">${mon}</div><div style="color:var(--amber);font-weight:600">Monitor / Defer</div><div class="muted" style="font-size:11px;margin-top:3px">Reassess next cycle</div></div>
+      </div>
+      ${nonAI?`<div class="alert alert-amber" style="margin-top:1rem">⚠️ ${nonAI} blocker(s) flagged as non-AI (management/process fix). These are routed to a separate workstream and excluded from the AI opportunity map. This preserves the credibility of the AI backlog with engineering leadership.</div>`:''}
+      <div class="card-sm" style="background:var(--ink);margin-top:1.2rem">
+        <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#5EEAD4;margin-bottom:.5rem">STEP 2 HANDOFF — COMPLETE</div>
+        <div style="font-family:'Fraunces',serif;font-size:1rem;font-weight:600;color:#fff;margin-bottom:.4rem">Ranked AI Opportunity Map ready for AI Feasibility Assessment</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.55)">Hand off this backlog to the AI Feasibility team (Step 2) with the registry, JTBD statements, and feasibility scores attached. Quick Wins should begin Step 3 co-design sprints within 2 weeks.</div>
+      </div>`;
+      db.p5_complete=true; save(); updateNavDots();
+    }
+  }
+}
+function scoreReg(regId,dim,val){
+  const r=(db.registry||[]).find(x=>x.id===regId);
+  if(!r) return;
+  if(!r.scores) r.scores={};
+  r.scores[dim]=val; save(); buildRegistry();
+}
+
+// ─── ACTIVITY TOGGLE ──────────────────────────────────────────────────────
+function toggleActivity(id){
+  const el=document.getElementById(id);
+  if(el) el.classList.toggle('activity-collapsed');
+}
+
+// ─── EXEC SUMMARY ─────────────────────────────────────────────────────────
+function saveExecSummary(){
+  db.execSummary={to:document.getElementById('execTo').value,subject:document.getElementById('execSubject').value,findings:document.getElementById('execFindings').value,nextSteps:document.getElementById('execNextSteps').value,immediate:document.getElementById('execImmediate').value};
+  save(); toast('✓ Executive summary saved');
+}
+function copyExecSummary(){
+  const d=db.execSummary||{};
+  const txt=`To: ${d.to||''}\nSubject: ${d.subject||''}\n\nKey Findings:\n${d.findings||''}\n\nCommitted Next Steps:\n${d.nextSteps||''}\n\nImmediate Actions:\n${d.immediate||''}`;
+  navigator.clipboard?.writeText(txt).then(()=>toast('✓ Summary copied to clipboard')).catch(()=>toast('Copy from the fields above'));
+}
+
+// ─── POPULATE FROM DB ─────────────────────────────────────────────────────
+function populateFromDB(){
+  if(db.company) document.getElementById('companyName').value=db.company;
+  if(db.team) document.getElementById('teamName').value=db.team;
+  if(db.cycle) document.getElementById('surveyCycle').value=db.cycle;
+  if(db.lead) document.getElementById('assessmentLead').value=db.lead;
+  if(db.vpEmail) document.getElementById('vpEmail').value=db.vpEmail;
+  if(db.targetResp) document.getElementById('targetRespondents').value=db.targetResp;
+  if(db.prevCycle) document.getElementById('prevCycle').value=db.prevCycle;
+  if(db.closeDate) document.getElementById('closeDate').value=db.closeDate;
+  if(db.context) document.getElementById('assessmentContext').value=db.context;
+  if(db.prevS) document.getElementById('prevS').value=db.prevS;
+  if(db.prevP) document.getElementById('prevP').value=db.prevP;
+  if(db.prevA) document.getElementById('prevA').value=db.prevA;
+  if(db.prevC) document.getElementById('prevC').value=db.prevC;
+  if(db.prevE) document.getElementById('prevE').value=db.prevE;
+  if(db.dora){
+    const d=db.dora;
+    ['leadtime','deplfreq','mttr','cfr','buildtime','flaky','prIter','prLag','ideSession'].forEach(k=>{
+      const el=document.getElementById('dora_'+k);if(el&&d[k]) el.value=d[k];
+    });
+  }
+  if(db.misalignNotes) document.getElementById('misalignNotes').value=db.misalignNotes;
+  if(db.surveyAnswers) {
+    QUESTIONS.filter(q=>!q.open).forEach(q=>{
+      const v=db.surveyAnswers[q.n];
+      if(v){
+        const sc=document.getElementById('sc-'+q.n);
+        if(sc) sc.querySelectorAll('.sb').forEach(b=>{b.className='sb';if(parseInt(b.textContent)===v)b.classList.add('sel-'+q.d);});
+        const qi=document.getElementById('qi-'+q.n);
+        if(qi) qi.className='q-item answered ans-'+q.d;
+      }
+    });
+    QUESTIONS.filter(q=>q.open).forEach(q=>{
+      const v=db.surveyAnswers[q.n];
+      if(v){const el=document.getElementById('ans-'+q.n);if(el)el.value=v;}
+    });
+    updateSurveyProg();
+  }
+  if(db.execSummary){
+    const e=db.execSummary;
+    if(e.to) document.getElementById('execTo').value=e.to;
+    if(e.subject) document.getElementById('execSubject').value=e.subject;
+    if(e.findings) document.getElementById('execFindings').value=e.findings;
+    if(e.nextSteps) document.getElementById('execNextSteps').value=e.nextSteps;
+    if(e.immediate) document.getElementById('execImmediate').value=e.immediate;
+  }
+  if(db.company) document.getElementById('surveyOrgLabel').textContent=(db.company||'')+(db.team?' · '+db.team:'')+(db.cycle?' · '+db.cycle:'');
+  updateSharedLink();
+  buildRecipientsList();
+  updateNavDots();
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────
+buildSurvey();
+populateFromDB();
+</script>
+</body>
+</html>

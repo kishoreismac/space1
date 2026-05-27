@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPACE Survey → Blocker Registry System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Lora:ital,wght@0,400;1,400;1,600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:     #0D1B2A;
+  --ink2:    #1A3050;
+  --teal:    #0B7A75;
+  --teal2:   #13A89E;
+  --gold:    #C8972B;
+  --goldlt:  #F5E6C0;
+  --cream:   #F7F3ED;
+  --white:   #FFFFFF;
+  --grey1:   #E8E3DB;
+  --grey2:   #9A9080;
+  --p1c:     #B8320A;  /* Phase 1 - red */
+  --p1bg:    #FAEDE8;
+  --p2c:     #B06A10;  /* Phase 2 - amber */
+  --p2bg:    #FBF0DC;
+  --p3c:     #1A6B3C;  /* Phase 3 - green */
+  --p3bg:    #E0F2E9;
+  --p4c:     #4A3080;  /* Phase 4 - purple */
+  --p4bg:    #EEEAF8;
+  --p5c:     #0B7A75;  /* Phase 5 - teal */
+  --p5bg:    #D6EFEE;
+}
+
+html { scroll-behavior: smooth; }
+body { font-family: 'DM Mono', monospace; background: var(--cream); color: var(--ink); line-height: 1.6; }
+
+/* ── HEADER ── */
+header {
+  background: var(--ink);
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 4rem 2rem 3rem;
+  position: relative;
+  z-index: 2;
+}
+.header-bg-text {
+  position: absolute;
+  top: -20px; right: -40px;
+  font-family: 'Syne', sans-serif;
+  font-size: 18rem;
+  font-weight: 800;
+  color: rgba(255,255,255,0.03);
+  pointer-events: none;
+  line-height: 1;
+  z-index: 1;
+}
+.eyebrow {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 1.2rem;
+}
+header h1 {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-weight: 800;
+  color: var(--white);
+  line-height: 1.08;
+  margin-bottom: 1.2rem;
+}
+header h1 span { color: var(--gold); }
+header p {
+  font-family: 'Lora', serif;
+  font-size: 1.05rem;
+  color: rgba(255,255,255,0.6);
+  max-width: 600px;
+  line-height: 1.7;
+  margin-bottom: 2rem;
+  font-style: italic;
+}
+.phase-nav {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.phase-nav a {
+  padding: 6px 14px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: none;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+.pn1 { color: #F5A282; border-color: #F5A282; }
+.pn2 { color: #FAC775; border-color: #FAC775; }
+.pn3 { color: #7ECBA0; border-color: #7ECBA0; }
+.pn4 { color: #AFA9EC; border-color: #AFA9EC; }
+.pn5 { color: #9FE1CB; border-color: #9FE1CB; }
+.phase-nav a:hover { background: rgba(255,255,255,0.08); }
+
+/* ── WORKED EXAMPLE BANNER ── */
+.example-banner {
+  background: linear-gradient(135deg, var(--gold) 0%, #E8A020 100%);
+  padding: 1rem 2rem;
+  text-align: center;
+}
+.example-banner p {
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.example-banner p span { font-style: italic; font-family: 'Lora', serif; font-weight: 400; font-size: 12px; text-transform: none; letter-spacing: 0; }
+
+/* ── MAIN LAYOUT ── */
+main { max-width: 1100px; margin: 0 auto; padding: 0 2rem 6rem; }
+
+/* ── SURVEY INPUT SECTION ── */
+.survey-input-section {
+  background: var(--white);
+  border: 1px solid var(--grey1);
+  border-radius: 16px;
+  padding: 2.5rem;
+  margin: 2.5rem 0;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+}
+.section-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--grey2);
+  margin-bottom: 0.5rem;
+}
+.section-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 0.8rem;
+}
+.section-desc {
+  font-family: 'Lora', serif;
+  font-size: 0.95rem;
+  color: var(--grey2);
+  font-style: italic;
+  margin-bottom: 2rem;
+  line-height: 1.7;
+}
+
+/* Survey scores grid */
+.scores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 2rem;
+}
+.score-card {
+  border: 2px solid var(--grey1);
+  border-radius: 12px;
+  padding: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.score-card:hover { border-color: var(--teal); }
+.score-card.active { border-color: var(--teal); background: #F0F9F8; }
+.sc-letter {
+  font-family: 'Syne', sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.sc-name { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--grey2); margin-bottom: 12px; }
+.sc-input {
+  width: 100%;
+  font-family: 'Syne', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  border: none;
+  border-bottom: 2px solid var(--grey1);
+  background: transparent;
+  color: var(--ink);
+  text-align: center;
+  outline: none;
+  padding: 4px 0;
+  transition: border-color 0.2s;
+}
+.sc-input:focus { border-bottom-color: var(--teal); }
+.sc-range { font-size: 10px; color: var(--grey2); text-align: center; margin-top: 6px; }
+.sc-trend {
+  position: absolute;
+  top: 10px; right: 10px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.trend-down { background: #FAEDE8; color: var(--p1c); }
+.trend-stable { background: var(--p3bg); color: var(--p3c); }
+
+.dim-s .sc-letter { color: var(--teal); }
+.dim-p .sc-letter { color: var(--p4c); }
+.dim-a .sc-letter { color: var(--p2c); }
+.dim-c .sc-letter { color: var(--p1c); }
+.dim-e .sc-letter { color: #0E4D8A; }
+
+/* Respondent meta */
+.meta-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 1.5rem;
+}
+.meta-field label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--grey2);
+  margin-bottom: 4px;
+}
+.meta-field input, .meta-field select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--grey1);
+  border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  background: var(--cream);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.meta-field input:focus, .meta-field select:focus { border-color: var(--teal); }
+
+.run-btn {
+  background: var(--ink);
+  color: var(--white);
+  border: none;
+  padding: 14px 40px;
+  border-radius: 6px;
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: background 0.2s;
+}
+.run-btn:hover { background: var(--ink2); }
+
+/* ── PHASE SECTIONS ── */
+.phase-section {
+  margin: 3rem 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+}
+.phase-header {
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+.phase-num {
+  font-family: 'Syne', sans-serif;
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.25;
+}
+.phase-meta { flex: 1; }
+.phase-meta .tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; opacity: 0.7; margin-bottom: 4px; }
+.phase-meta h2 { font-family: 'Syne', sans-serif; font-size: 1.3rem; font-weight: 700; }
+.phase-meta .timing { font-size: 11px; opacity: 0.65; margin-top: 2px; }
+.phase-body { background: var(--white); padding: 2rem; }
+
+.ph1 .phase-header { background: var(--p1c); color: white; }
+.ph2 .phase-header { background: var(--p2c); color: white; }
+.ph3 .phase-header { background: var(--p3c); color: white; }
+.ph4 .phase-header { background: var(--p4c); color: white; }
+.ph5 .phase-header { background: var(--p5c); color: white; }
+
+/* Results tables */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 1rem 0;
+}
+.results-table th {
+  background: var(--ink);
+  color: var(--white);
+  padding: 10px 14px;
+  text-align: left;
+  font-family: 'Syne', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.results-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--grey1);
+  vertical-align: top;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+}
+.results-table tr:nth-child(even) td { background: var(--cream); }
+.results-table tr:hover td { background: #EEF8F7; }
+
+/* Score badges */
+.score-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.score-critical { background: var(--p1bg); color: var(--p1c); }
+.score-significant { background: var(--p2bg); color: var(--p2c); }
+.score-moderate { background: #FFF8E1; color: #7A5500; }
+.score-healthy { background: var(--p3bg); color: var(--p3c); }
+.score-excellent { background: #E3F2FD; color: #0D47A1; }
+
+/* Priority flags */
+.flag-p1 { background: var(--p1bg); color: var(--p1c); padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.flag-p2 { background: var(--p2bg); color: var(--p2c); padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.flag-p3 { background: var(--p3bg); color: var(--p3c); padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+
+/* Activities grid */
+.activities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 1.5rem 0;
+}
+.activity-card {
+  border: 1px solid var(--grey1);
+  border-radius: 10px;
+  padding: 1.2rem;
+  background: var(--cream);
+}
+.activity-card h4 {
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+.activity-card p { font-size: 12px; color: var(--grey2); line-height: 1.6; }
+.activity-card .tool-list {
+  margin-top: 8px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.tool-chip {
+  background: var(--ink);
+  color: var(--goldlt);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+/* Decision gate */
+.decision-gate {
+  background: linear-gradient(135deg, #1A3050 0%, #0D1B2A 100%);
+  border-radius: 10px;
+  padding: 1.2rem 1.5rem;
+  margin: 1.5rem 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.gate-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.gate-text h4 { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--gold); margin-bottom: 4px; }
+.gate-text p { font-size: 12px; color: rgba(255,255,255,0.65); line-height: 1.6; }
+
+/* Open text themes */
+.theme-card {
+  border-left: 4px solid;
+  padding: 1rem 1.2rem;
+  margin: 8px 0;
+  background: var(--cream);
+  border-radius: 0 8px 8px 0;
+}
+.theme-freq { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.theme-quote {
+  font-family: 'Lora', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--grey2);
+  margin-top: 6px;
+  border-left: 2px solid rgba(0,0,0,0.1);
+  padding-left: 10px;
+}
+
+/* Triangulation matrix */
+.triangulation-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 120px;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--grey1);
+  font-size: 12px;
+}
+.triangulation-row.header {
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--grey2);
+  padding-bottom: 8px;
+}
+.signal-dot {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+.sig-yes { background: var(--p3bg); color: var(--p3c); }
+.sig-no  { background: var(--grey1); color: var(--grey2); }
+.sig-partial { background: var(--p2bg); color: var(--p2c); }
+
+/* Journey map flow */
+.journey-stage {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+.js-num {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--p4c);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.js-content h4 { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+.js-content p { font-size: 12px; color: var(--grey2); line-height: 1.5; }
+.friction-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin: 2px;
+}
+.fric-red { background: var(--p1bg); color: var(--p1c); }
+.fric-amber { background: var(--p2bg); color: var(--p2c); }
+.fric-green { background: var(--p3bg); color: var(--p3c); }
+
+/* Registry table */
+.registry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  margin: 1rem 0;
+}
+.registry-table th {
+  background: var(--ink);
+  color: var(--goldlt);
+  padding: 9px 12px;
+  text-align: left;
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.registry-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--grey1);
+  vertical-align: top;
+  font-family: 'DM Mono', monospace;
+}
+.registry-table tr:nth-child(even) td { background: var(--cream); }
+
+.ai-yes { color: var(--p3c); font-weight: 600; }
+.ai-inv { color: var(--p2c); font-weight: 600; }
+.ai-no  { color: var(--grey2); }
+
+/* Feasibility matrix */
+.feas-score {
+  display: inline-block;
+  width: 32px; height: 32px;
+  border-radius: 6px;
+  text-align: center;
+  line-height: 32px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.fs-5 { background: #C8E6C9; color: #1B5E20; }
+.fs-4 { background: #DCEDC8; color: #33691E; }
+.fs-3 { background: #FFF9C4; color: #F57F17; }
+.fs-2 { background: #FFCCBC; color: #BF360C; }
+.fs-1 { background: #FFCDD2; color: #B71C1C; }
+
+/* Classification badges */
+.class-qw  { background: #C8E6C9; color: #1B5E20; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.class-sb  { background: #DCEDC8; color: #33691E; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.class-mon { background: #FFF9C4; color: #F57F17; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.class-def { background: var(--grey1); color: var(--grey2); padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+
+/* Responsive */
+@media (max-width: 700px) {
+  .scores-grid { grid-template-columns: repeat(2, 1fr); }
+  .triangulation-row { grid-template-columns: 1fr; }
+  .phase-header { flex-direction: column; gap: 0.5rem; }
+  .phase-num { font-size: 2rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-bg-text">SPACE</div>
+  <div class="header-inner">
+    <p class="eyebrow">Platform Engineering · AI Augmentation</p>
+    <h1>SPACE Survey<br><span>Five-Phase Analysis</span><br>System</h1>
+    <p>Convert developer survey scores into a prioritised, validated, actionable blocker registry — then hand off to AI feasibility assessment.</p>
+    <div class="phase-nav">
+      <a href="#phase1" class="pn1">P1 · Score Triage</a>
+      <a href="#phase2" class="pn2">P2 · Open Text</a>
+      <a href="#phase3" class="pn3">P3 · Cross-Validate</a>
+      <a href="#phase4" class="pn4">P4 · Journey Map</a>
+      <a href="#phase5" class="pn5">P5 · Registry + AI</a>
+    </div>
+  </div>
+</header>
+
+<div class="example-banner">
+  <p>Worked example loaded — Land O'Lakes Engineering (38 respondents) <span>· Edit scores below and click "Run All Phases" to recalculate</span></p>
+</div>
+
+<main>
+
+<!-- ── SURVEY INPUT ── -->
+<section class="survey-input-section">
+  <p class="section-label">Survey inputs</p>
+  <h2 class="section-title">Load Survey Results</h2>
+  <p class="section-desc">Enter the five SPACE dimension averages from your survey run. The worked example below uses real scores from a 38-developer cohort at Land O'Lakes Engineering.</p>
+
+  <div class="meta-row">
+    <div class="meta-field">
+      <label>Organisation</label>
+      <input type="text" id="org" value="Land O'Lakes Engineering">
+    </div>
+    <div class="meta-field">
+      <label>Survey cycle</label>
+      <input type="text" id="cycle" value="Q2 2025">
+    </div>
+    <div class="meta-field">
+      <label>Respondents</label>
+      <input type="number" id="respondents" value="38">
+    </div>
+    <div class="meta-field">
+      <label>Response rate</label>
+      <input type="text" id="response_rate" value="76%">
+    </div>
+  </div>
+
+  <div class="scores-grid">
+    <div class="score-card dim-s" onclick="this.classList.toggle('active')">
+      <span class="sc-trend trend-down">↓ −0.3</span>
+      <div class="sc-letter">S</div>
+      <div class="sc-name">Satisfaction</div>
+      <input class="sc-input" id="scoreS" type="number" min="1" max="5" step="0.1" value="2.4" onchange="updateAnalysis()">
+      <div class="sc-range">1.0 → 5.0</div>
+    </div>
+    <div class="score-card dim-p" onclick="this.classList.toggle('active')">
+      <span class="sc-trend trend-stable">→ stable</span>
+      <div class="sc-letter">P</div>
+      <div class="sc-name">Performance</div>
+      <input class="sc-input" id="scoreP" type="number" min="1" max="5" step="0.1" value="3.1" onchange="updateAnalysis()">
+      <div class="sc-range">1.0 → 5.0</div>
+    </div>
+    <div class="score-card dim-a" onclick="this.classList.toggle('active')">
+      <span class="sc-trend trend-down">↓ −0.5</span>
+      <div class="sc-letter">A</div>
+      <div class="sc-name">Activity</div>
+      <input class="sc-input" id="scoreA" type="number" min="1" max="5" step="0.1" value="3.8" onchange="updateAnalysis()">
+      <div class="sc-range">1.0 → 5.0</div>
+    </div>
+    <div class="score-card dim-c" onclick="this.classList.toggle('active')">
+      <span class="sc-trend trend-down">↓ −0.4</span>
+      <div class="sc-letter">C</div>
+      <div class="sc-name">Communication</div>
+      <input class="sc-input" id="scoreC" type="number" min="1" max="5" step="0.1" value="2.6" onchange="updateAnalysis()">
+      <div class="sc-range">1.0 → 5.0</div>
+    </div>
+    <div class="score-card dim-e" onclick="this.classList.toggle('active')">
+      <span class="sc-trend trend-down">↓ −0.6</span>
+      <div class="sc-letter">E</div>
+      <div class="sc-name">Efficiency</div>
+      <input class="sc-input" id="scoreE" type="number" min="1" max="5" step="0.1" value="2.2" onchange="updateAnalysis()">
+      <div class="sc-range">1.0 → 5.0</div>
+    </div>
+  </div>
+
+  <button class="run-btn" onclick="updateAnalysis()">▶ Run All Five Phases</button>
+</section>
+
+<!-- ══════════════════════════════════════
+     PHASE 1 — SCORE TRIAGE
+══════════════════════════════════════ -->
+<section class="phase-section ph1" id="phase1">
+  <div class="phase-header">
+    <div class="phase-num">01</div>
+    <div class="phase-meta">
+      <div class="tag">Phase 1 · Day 1 (within 24 hrs)</div>
+      <h2>Score Triage</h2>
+      <div class="timing">Apply score range bands · Flag P1 dimensions · Identify lowest sub-questions · Share with VP Eng same day</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="activities-grid">
+      <div class="activity-card">
+        <h4>Activity 1: Apply Range Bands</h4>
+        <p>Score every dimension against the five range bands. Any score below 2.9 is flagged P1. Any decline &gt;0.4 pts vs last cycle is P1 regardless of absolute score.</p>
+        <div class="tool-list"><span class="tool-chip">Excel Scoring Sheet</span><span class="tool-chip">SPACE Dashboard</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 2: Cross-Pattern Check</h4>
+        <p>Check for dangerous cross-dimension combinations: Low S + Low E (tooling harm), Low S + High A (hidden toil), Low S + Healthy P (heroics/attrition risk).</p>
+        <div class="tool-list"><span class="tool-chip">Pattern Matrix</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 3: Psych Safety Gate</h4>
+        <p>Check Q7 sub-score. If below 2.5, all other scores are potentially understated. Flag for 1:1 interviews instead of journey mapping in Phase 4.</p>
+        <div class="tool-list"><span class="tool-chip">Sub-score Analysis</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 4: Executive Summary</h4>
+        <p>Send one-page triage summary to VP Engineering same day. Acknowledge scores, commit to timeline. Visible response prevents survey fatigue.</p>
+        <div class="tool-list"><span class="tool-chip">Exec Summary Template</span></div>
+      </div>
+    </div>
+
+    <div class="decision-gate">
+      <div class="gate-icon">⚡</div>
+      <div class="gate-text">
+        <h4>Decision Gate: Emergency vs. Standard Track</h4>
+        <p>Any dimension below 2.0 → Emergency track: 48hr deep-dive, immediate journey mapping within 5 days. Scores 2.0–2.9 → Standard track: structured investigation within 2 weeks. Q7 below 2.5 → replace Phase 4 journey mapping with anonymous 1:1 interviews.</p>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin:1.5rem 0 0.8rem;">Triage Results — Land O'Lakes Q2 2025</h3>
+    <table class="results-table" id="triageTable">
+      <thead><tr><th>Dimension</th><th>Score</th><th>Range</th><th>Priority</th><th>Trend</th><th>Cross-Pattern Alert</th><th>Action</th></tr></thead>
+      <tbody id="triageBody"></tbody>
+    </table>
+
+    <div id="crossPatternAlert" style="margin-top:1rem;"></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PHASE 2 — OPEN TEXT ANALYSIS
+══════════════════════════════════════ -->
+<section class="phase-section ph2" id="phase2">
+  <div class="phase-header">
+    <div class="phase-num">02</div>
+    <div class="phase-meta">
+      <div class="tag">Phase 2 · Days 1–3</div>
+      <h2>Open Text Analysis</h2>
+      <div class="timing">Cluster Q10/Q20/Q40/Q50 themes · Apply 30% frequency threshold · Preserve verbatim quotes for Phase 4</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="activities-grid">
+      <div class="activity-card">
+        <h4>Activity 1: Theme Clustering</h4>
+        <p>Read all 4 open-text question responses. Group by recurring theme manually or using basic topic modelling. Count frequency: how many developers named the same theme independently?</p>
+        <div class="tool-list"><span class="tool-chip">Affinity Mapping</span><span class="tool-chip">LDA Topic Model</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 2: Frequency Threshold</h4>
+        <p>Apply the 30% rule: any theme mentioned by 30%+ of respondents is a confirmed blocker regardless of Likert scores. This converts individual frustration to systemic evidence.</p>
+        <div class="tool-list"><span class="tool-chip">Frequency Counter</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 3: JTBD Extraction</h4>
+        <p>Extract verbatim statements that contain implicit JTBD framing. These become the raw material for agent design briefs in Step 3. Preserve exact developer language — don't paraphrase.</p>
+        <div class="tool-list"><span class="tool-chip">JTBD Template</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 4: Misalignment Check</h4>
+        <p>Compare open text themes against Likert low-scores. If a theme appears frequently in text but NOT in a low Likert score, the Likert question missed the blocker — flag for Phase 3.</p>
+        <div class="tool-list"><span class="tool-chip">Signal Comparison</span></div>
+      </div>
+    </div>
+
+    <div class="decision-gate">
+      <div class="gate-icon">🔍</div>
+      <div class="gate-text">
+        <h4>Decision Gate: Promoted vs. Investigate Further</h4>
+        <p>Theme mentioned by ≥30% of respondents → Promoted: enters Phase 3 cross-validation as a candidate blocker. Theme mentioned by 15–29% → Investigate: run targeted 1:1 follow-up with 3 respondents before deciding. Theme mentioned by &lt;15% → Monitor: note but do not promote to registry.</p>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin:1.5rem 0 0.8rem;">Open Text Themes — Land O'Lakes Q2 2025</h3>
+
+    <div class="theme-card" style="border-color: var(--p1c);">
+      <div class="theme-freq" style="color:var(--p1c);">47% of respondents (18/38) · Q50 Efficiency · PROMOTED ✓</div>
+      <strong style="font-size:13px;">Build pipeline failures and cryptic error messages</strong>
+      <div class="theme-quote">"I spent most of Tuesday decoding a stack trace that just said 'exit code 1'. No context, no pointer to what failed. I eventually found it was a flaky integration test that had nothing to do with my change."</div>
+      <div class="theme-quote">"The CI pipeline is basically a black box. When it fails I just re-run it three times and hope."</div>
+    </div>
+
+    <div class="theme-card" style="border-color: var(--p1c);">
+      <div class="theme-freq" style="color:var(--p1c);">42% of respondents (16/38) · Q10 Satisfaction · PROMOTED ✓</div>
+      <strong style="font-size:13px;">Codebase onboarding — understanding unfamiliar services takes too long</strong>
+      <div class="theme-quote">"Every time I pick up a ticket in the Precision Ag platform I spend half a day just reading code to understand what it does. There's no documentation, no runbook, no README that's actually current."</div>
+    </div>
+
+    <div class="theme-card" style="border-color: var(--p2c);">
+      <div class="theme-freq" style="color:var(--p2c);">34% of respondents (13/38) · Q40 Communication · PROMOTED ✓</div>
+      <strong style="font-size:13px;">Unclear requirements leading to mid-sprint rework</strong>
+      <div class="theme-quote">"We start coding and then find out the AC was wrong or incomplete. I've rewritten the same feature three times this quarter because the ticket said one thing and the stakeholder meant another."</div>
+    </div>
+
+    <div class="theme-card" style="border-color: var(--p2c);">
+      <div class="theme-freq" style="color:var(--p2c);">29% of respondents (11/38) · Q50 Efficiency · INVESTIGATE</div>
+      <strong style="font-size:13px;">On-call incident RCA taking 2–3 hours before remediation starts</strong>
+      <div class="theme-quote">"When something breaks in the Supply Chain API I spend the first two hours just figuring out which deployment caused it. By the time I know what to fix I'm already 3 hours into an incident."</div>
+    </div>
+
+    <div class="theme-card" style="border-color: var(--grey1);">
+      <div class="theme-freq" style="color:var(--grey2);">18% of respondents (7/38) · Q20 Performance · MONITOR</div>
+      <strong style="font-size:13px;">Test environment provisioning delays</strong>
+      <div class="theme-quote">"Sometimes I wait 2–3 hours for a test environment. It's not every sprint but when it happens it kills my flow."</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PHASE 3 — CROSS-VALIDATION
+══════════════════════════════════════ -->
+<section class="phase-section ph3" id="phase3">
+  <div class="phase-header">
+    <div class="phase-num">03</div>
+    <div class="phase-meta">
+      <div class="tag">Phase 3 · Days 2–4</div>
+      <h2>Quantitative Cross-Validation</h2>
+      <div class="timing">Pull DORA · pipeline data · PR analytics · IDE telemetry · Apply triangulation gate (2+ sources required)</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="activities-grid">
+      <div class="activity-card">
+        <h4>Activity 1: Pull DORA Baseline</h4>
+        <p>Extract 90-day DORA metrics: lead time, deployment frequency, MTTR, change failure rate. Compare against prior cycle and industry benchmark.</p>
+        <div class="tool-list"><span class="tool-chip">Azure DevOps</span><span class="tool-chip">LinearB</span><span class="tool-chip">DORA Dashboard</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 2: Pipeline &amp; Build Data</h4>
+        <p>Pull: avg build time, flaky test rate (% runs failing non-deterministically), pipeline error frequency, time-to-fix after failure.</p>
+        <div class="tool-list"><span class="tool-chip">GitHub Actions</span><span class="tool-chip">BuildPulse</span><span class="tool-chip">Datadog</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 3: PR &amp; Code Review Data</h4>
+        <p>Pull: PR first-pass review rate, avg review lag, iteration count per PR, stale PR count (&gt;5 days open).</p>
+        <div class="tool-list"><span class="tool-chip">GitHub Analytics</span><span class="tool-chip">Axify</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 4: IDE Telemetry</h4>
+        <p>Pull: avg active edit session length, context switch rate, idle patterns, search query frequency. Confirms Activity and Efficiency findings.</p>
+        <div class="tool-list"><span class="tool-chip">VS Code Telemetry</span><span class="tool-chip">JetBrains Analytics</span></div>
+      </div>
+    </div>
+
+    <div class="decision-gate">
+      <div class="gate-icon">🔺</div>
+      <div class="gate-text">
+        <h4>Decision Gate: Triangulation Gate (2+ sources required)</h4>
+        <p>Survey alone is not sufficient evidence. A candidate blocker enters the registry ONLY when ≥2 independent signal types agree. Survey + Quant = promoted. Survey only = investigate further. Quant only (no survey signal) = targeted 1:1 interview before deciding. All 3 signal types = P1 fast-track.</p>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin:1.5rem 0 0.8rem;">Signal Triangulation Matrix — Land O'Lakes Q2 2025</h3>
+
+    <div class="triangulation-row header">
+      <div>Candidate Blocker</div>
+      <div>Survey Signal</div>
+      <div>Quant Data</div>
+      <div>Open Text</div>
+      <div>Sources</div>
+      <div>Decision</div>
+    </div>
+
+    <div class="triangulation-row">
+      <div style="font-family:'DM Mono';font-size:12px;">Build pipeline errors &amp; opacity</div>
+      <div><span class="signal-dot sig-yes">✓</span></div>
+      <div><span class="signal-dot sig-yes">✓</span> avg 38 min, 22% flaky</div>
+      <div><span class="signal-dot sig-yes">✓</span> 47% mention</div>
+      <div style="font-weight:700;color:var(--p3c);">3/3</div>
+      <div><span class="flag-p1">P1 Registry</span></div>
+    </div>
+    <div class="triangulation-row">
+      <div>Codebase onboarding friction</div>
+      <div><span class="signal-dot sig-yes">✓</span></div>
+      <div><span class="signal-dot sig-yes">✓</span> IDE: 11min avg session</div>
+      <div><span class="signal-dot sig-yes">✓</span> 42% mention</div>
+      <div style="font-weight:700;color:var(--p3c);">3/3</div>
+      <div><span class="flag-p1">P1 Registry</span></div>
+    </div>
+    <div class="triangulation-row">
+      <div>Requirements clarity / rework</div>
+      <div><span class="signal-dot sig-yes">✓</span></div>
+      <div><span class="signal-dot sig-yes">✓</span> PR iteration: 3.2x avg</div>
+      <div><span class="signal-dot sig-yes">✓</span> 34% mention</div>
+      <div style="font-weight:700;color:var(--p3c);">3/3</div>
+      <div><span class="flag-p1">P1 Registry</span></div>
+    </div>
+    <div class="triangulation-row">
+      <div>Incident RCA speed</div>
+      <div><span class="signal-dot sig-partial">~</span></div>
+      <div><span class="signal-dot sig-yes">✓</span> MTTR: 3.1 hrs avg</div>
+      <div><span class="signal-dot sig-yes">✓</span> 29% mention</div>
+      <div style="font-weight:700;color:var(--p2c);">2/3</div>
+      <div><span class="flag-p2">P2 Registry</span></div>
+    </div>
+    <div class="triangulation-row">
+      <div>Test environment provisioning</div>
+      <div><span class="signal-dot sig-partial">~</span></div>
+      <div><span class="signal-dot sig-no">–</span> no data</div>
+      <div><span class="signal-dot sig-partial">~</span> 18% mention</div>
+      <div style="font-weight:700;color:var(--grey2);">1/3</div>
+      <div><span class="flag-p3">Investigate</span></div>
+    </div>
+    <div class="triangulation-row">
+      <div>On-call rotation imbalance</div>
+      <div><span class="signal-dot sig-yes">✓</span></div>
+      <div><span class="signal-dot sig-no">–</span></div>
+      <div><span class="signal-dot sig-no">–</span></div>
+      <div style="font-weight:700;color:var(--grey2);">1/3</div>
+      <div><span class="flag-p3">Monitor only</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PHASE 4 — JOURNEY MAPPING
+══════════════════════════════════════ -->
+<section class="phase-section ph4" id="phase4">
+  <div class="phase-header">
+    <div class="phase-num">04</div>
+    <div class="phase-meta">
+      <div class="tag">Phase 4 · Days 5–10</div>
+      <h2>Journey Mapping Workshops</h2>
+      <div class="timing">One half-day per flagged team · 6–8 developers · Do NOT show scores first · 5-Whys on top friction points</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="activities-grid">
+      <div class="activity-card">
+        <h4>Activity 1: Session Setup</h4>
+        <p>Recruit 6–8 developers from the lowest-scoring teams. No managers. Run 4 sessions: Precision Ag Platform, Supply Chain APIs, Seed R&amp;D Pipeline, ERP Integration.</p>
+        <div class="tool-list"><span class="tool-chip">Miro</span><span class="tool-chip">FigJam</span><span class="tool-chip">Physical Whiteboard</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 2: Walk the Journey</h4>
+        <p>Developers narrate a real recent ticket from assignment to deployment. Facilitator maps every step, tool, handoff, and decision. Capture time spent at each step.</p>
+        <div class="tool-list"><span class="tool-chip">Journey Map Template</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 3: Annotate Friction</h4>
+        <p>Tag each step: 🔴 pain (blocks progress), 🟡 wait (delays without blocking), 🟢 smooth. Dot-vote: each developer gets 5 dots to place on highest-cost pain points.</p>
+        <div class="tool-list"><span class="tool-chip">Dot Voting</span><span class="tool-chip">Severity Tags</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 4: 5-Whys on Top Dots</h4>
+        <p>Drill into the top 3 dot-voted pain points using 5-Whys. This distinguishes symptom from root cause — the root cause becomes the blocker registry entry and JTBD statement.</p>
+        <div class="tool-list"><span class="tool-chip">5-Whys Template</span><span class="tool-chip">RCA Framework</span></div>
+      </div>
+    </div>
+
+    <div class="decision-gate">
+      <div class="gate-icon">🗺️</div>
+      <div class="gate-text">
+        <h4>Decision Gate: Confirmed vs. Symptom-only</h4>
+        <p>Blocker confirmed in journey mapping AND matched Phase 3 quantitative signals → 3-source validation, highest confidence tier. Blocker confirmed in journey mapping but NOT in Phase 3 signals → run targeted data pull before promoting. If 5-Whys reveals root cause is management/process (not tooling) → route to management workstream, not AI backlog.</p>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin:1.5rem 0 0.8rem;">Journey Map Excerpt — Precision Ag Platform Team (8 developers)</h3>
+
+    <div class="journey-stage">
+      <div class="js-num">1</div>
+      <div class="js-content">
+        <h4>Pick up ticket (Jira) → read description</h4>
+        <p>Avg time: 15 min. <span class="friction-tag fric-green">Smooth</span> — ticket exists and is readable</p>
+      </div>
+    </div>
+    <div class="journey-stage">
+      <div class="js-num">2</div>
+      <div class="js-content">
+        <h4>Understand the affected service</h4>
+        <p>Avg time: <strong>3.5 hours</strong> <span class="friction-tag fric-red">🔴 Major pain — 7/8 dots</span> — "I have to read every file in the service to understand what it does. There's a README but it's 2 years out of date."</p>
+        <p style="margin-top:6px;font-size:12px;color:var(--grey2);font-family:'Lora',serif;font-style:italic;">5-Whys root cause: No automated documentation or AI-assisted explanation tool. Developers rely on reading source code as primary understanding mechanism.</p>
+      </div>
+    </div>
+    <div class="journey-stage">
+      <div class="js-num">3</div>
+      <div class="js-content">
+        <h4>Write code and unit tests</h4>
+        <p>Avg time: 4 hours. <span class="friction-tag fric-green">Smooth</span> — once codebase is understood, actual coding is fast</p>
+      </div>
+    </div>
+    <div class="journey-stage">
+      <div class="js-num">4</div>
+      <div class="js-content">
+        <h4>Submit PR → wait for CI/CD</h4>
+        <p>Avg wait: <strong>38 min build + 24 hr review lag</strong> <span class="friction-tag fric-red">🔴 Pain — 6/8 dots</span> — "Half the time it fails for a test that has nothing to do with my change. I just re-run it."</p>
+        <p style="margin-top:6px;font-size:12px;color:var(--grey2);font-family:'Lora',serif;font-style:italic;">5-Whys root cause: No test impact analysis — full suite runs on every PR. 22% of failures are flaky tests unrelated to the change.</p>
+      </div>
+    </div>
+    <div class="journey-stage">
+      <div class="js-num">5</div>
+      <div class="js-content">
+        <h4>Address review comments → iterate</h4>
+        <p>Avg iterations: 3.2x. <span class="friction-tag fric-amber">🟡 Wait — 4/8 dots</span> — "Review comments contradict each other across reviewers. No consistent standard."</p>
+      </div>
+    </div>
+    <div class="journey-stage">
+      <div class="js-num">6</div>
+      <div class="js-content">
+        <h4>Deploy to production</h4>
+        <p>Avg time: 2 hrs (approval gate) <span class="friction-tag fric-amber">🟡 Wait — 3/8 dots</span> — "Low-risk changes go through the same approval process as high-risk ones."</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════
+     PHASE 5 — BLOCKER REGISTRY + AI FEASIBILITY
+══════════════════════════════════════ -->
+<section class="phase-section ph5" id="phase5">
+  <div class="phase-header">
+    <div class="phase-num">05</div>
+    <div class="phase-meta">
+      <div class="tag">Phase 5 · Days 10–14</div>
+      <h2>Blocker Registry + AI Feasibility Handoff</h2>
+      <div class="timing">Compile validated blockers · Score AI feasibility · Classify: Quick Win / Strategic Bet / Monitor / Defer</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="activities-grid">
+      <div class="activity-card">
+        <h4>Activity 1: Compile Registry</h4>
+        <p>Enter every 2+ source validated blocker. Tag: SDLC phase, SPACE dimension, survey score, confirming signals, developer reach, time cost estimate.</p>
+        <div class="tool-list"><span class="tool-chip">Blocker Registry Template</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 2: Preliminary AI Fit Flag</h4>
+        <p>Flag each blocker: Yes (clear AI tool exists), Needs Investigation, No (process/management fix). "No" entries route to non-AI workstream immediately.</p>
+        <div class="tool-list"><span class="tool-chip">AI Landscape Map</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 3: Score Feasibility (Step 2)</h4>
+        <p>Apply the 5-dimension feasibility matrix to each Yes/Investigate entry: Tool Maturity (25%), Integration Ease (20%), Cost Efficiency (25%), Data Availability (15%), Dev Adoption (15%).</p>
+        <div class="tool-list"><span class="tool-chip">Feasibility Scoring Matrix</span></div>
+      </div>
+      <div class="activity-card">
+        <h4>Activity 4: Classify &amp; Sequence</h4>
+        <p>Score &gt;8.0 = Quick Win (start immediately). 6.0–8.0 = Strategic Bet (plan PoC sprint). 4.0–5.9 = Monitor. Below 4.0 = Defer. Sequence by dependency and team availability.</p>
+        <div class="tool-list"><span class="tool-chip">Classification Matrix</span></div>
+      </div>
+    </div>
+
+    <div class="decision-gate">
+      <div class="gate-icon">🚀</div>
+      <div class="gate-text">
+        <h4>Decision Gate: AI Backlog vs. Non-AI Workstream</h4>
+        <p>Only blockers with AI Fit = Yes or Needs Investigation enter the feasibility assessment. Blockers flagged as No (management quality, org structure, headcount issues) are routed to a separate workstream. This preserves credibility of the AI opportunity map with leadership.</p>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin:1.5rem 0 0.5rem;">Validated Blocker Registry — Land O'Lakes Q2 2025</h3>
+    <div style="overflow-x:auto;">
+    <table class="registry-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Blocker</th><th>SDLC Phase</th><th>Dimension</th><th>Score</th><th>Sources</th><th>Dev Reach</th><th>Hrs/Sprint Lost</th><th>AI Fit</th><th>Priority</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>Codebase onboarding friction</td>
+          <td>Coding</td>
+          <td>E + P</td>
+          <td><span class="score-badge score-critical">E:2.2</span></td>
+          <td>Survey + IDE telemetry + Open text</td>
+          <td>42% (16/38)</td>
+          <td>~3.5 hrs</td>
+          <td><span class="ai-yes">✓ YES</span></td>
+          <td><span class="flag-p1">P1</span></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Build pipeline errors &amp; flaky tests</td>
+          <td>Build / Test</td>
+          <td>E</td>
+          <td><span class="score-badge score-critical">E:2.2</span></td>
+          <td>Survey + CI/CD data + Open text</td>
+          <td>47% (18/38)</td>
+          <td>~2.8 hrs</td>
+          <td><span class="ai-yes">✓ YES</span></td>
+          <td><span class="flag-p1">P1</span></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Requirements clarity / rework loops</td>
+          <td>Planning</td>
+          <td>C</td>
+          <td><span class="score-badge score-significant">C:2.6</span></td>
+          <td>Survey + PR iteration data + Open text</td>
+          <td>34% (13/38)</td>
+          <td>~2.2 hrs</td>
+          <td><span class="ai-yes">✓ YES</span></td>
+          <td><span class="flag-p1">P1</span></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Incident RCA speed</td>
+          <td>Operations</td>
+          <td>E</td>
+          <td><span class="score-badge score-significant">E:2.2</span></td>
+          <td>Survey + MTTR data + Open text</td>
+          <td>29% (11/38)</td>
+          <td>~3.1 hrs/inc</td>
+          <td><span class="ai-yes">✓ YES</span></td>
+          <td><span class="flag-p2">P2</span></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>Unsustainable heroics / attrition risk</td>
+          <td>All phases</td>
+          <td>S + P</td>
+          <td><span class="score-badge score-critical">S:2.4</span></td>
+          <td>Survey + commit timestamps</td>
+          <td>Declining S trend</td>
+          <td>Retention cost</td>
+          <td><span class="ai-no">✗ NO — mgmt fix</span></td>
+          <td><span class="flag-p2">P2 non-AI</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin:2rem 0 0.5rem;">AI Feasibility Scoring Matrix — Top 4 AI-Fit Blockers</h3>
+    <div style="overflow-x:auto;">
+    <table class="registry-table">
+      <thead>
+        <tr>
+          <th>Blocker</th>
+          <th>Tool Maturity<br><small>25%</small></th>
+          <th>Integration Ease<br><small>20%</small></th>
+          <th>Cost Efficiency<br><small>25%</small></th>
+          <th>Data Availability<br><small>15%</small></th>
+          <th>Dev Adoption<br><small>15%</small></th>
+          <th>Weighted Score</th>
+          <th>Classification</th>
+          <th>Recommended Tool</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Codebase onboarding</td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td style="font-family:'Syne';font-weight:700;font-size:1.1rem;color:var(--p3c);">9.2</td>
+          <td><span class="class-qw">Quick Win</span></td>
+          <td>GitHub Copilot + RAG</td>
+        </tr>
+        <tr>
+          <td>Build pipeline errors</td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td style="font-family:'Syne';font-weight:700;font-size:1.1rem;color:var(--p3c);">8.7</td>
+          <td><span class="class-qw">Quick Win</span></td>
+          <td>BuildPulse + Harness AI</td>
+        </tr>
+        <tr>
+          <td>Requirements clarity</td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td><span class="feas-score fs-3">3</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td style="font-family:'Syne';font-weight:700;font-size:1.1rem;color:var(--teal);">8.1</td>
+          <td><span class="class-sb">Strategic Bet</span></td>
+          <td>Custom AC Agent on Jira</td>
+        </tr>
+        <tr>
+          <td>Incident RCA speed</td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td><span class="feas-score fs-3">3</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td><span class="feas-score fs-5">5</span></td>
+          <td><span class="feas-score fs-4">4</span></td>
+          <td style="font-family:'Syne';font-weight:700;font-size:1.1rem;color:var(--teal);">7.9</td>
+          <td><span class="class-sb">Strategic Bet</span></td>
+          <td>PagerDuty AI + Splunk</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <!-- Final output summary -->
+    <div style="background:var(--ink);border-radius:12px;padding:2rem;margin-top:2rem;color:white;">
+      <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:0.8rem;">Program output</div>
+      <div style="font-family:'Syne',sans-serif;font-size:1.2rem;font-weight:700;margin-bottom:1rem;">Ranked AI Opportunity Map — Step 2 Handoff</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+        <div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:1rem;">
+          <div style="color:var(--teal2);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Quick Wins</div>
+          <div style="font-family:'Syne';font-size:1.8rem;font-weight:800;">2</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:4px;">Start immediately — Step 3 co-design this sprint</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:1rem;">
+          <div style="color:#7ECBA0;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Strategic Bets</div>
+          <div style="font-family:'Syne';font-size:1.8rem;font-weight:800;">2</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:4px;">Plan PoC sprint in Q3 — feasibility confirmed</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:1rem;">
+          <div style="color:var(--gold);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Non-AI Routes</div>
+          <div style="font-family:'Syne';font-size:1.8rem;font-weight:800;">1</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:4px;">Heroics/attrition → management coaching workstream</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:1rem;">
+          <div style="color:#FAC775;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Est. Time Recovered</div>
+          <div style="font-family:'Syne';font-size:1.8rem;font-weight:800;">~8.5</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:4px;">hrs/sprint/developer if Quick Wins deployed</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+const BANDS = [
+  { max:2.0, label:"Critical",    cls:"score-critical",    action:"Emergency track — 48hr deep-dive" },
+  { max:2.9, label:"Significant", cls:"score-significant", action:"Structured investigation within 2 weeks" },
+  { max:3.4, label:"Moderate",    cls:"score-moderate",    action:"Monitor trend — explore in next cycle" },
+  { max:4.2, label:"Healthy",     cls:"score-healthy",     action:"Cross-validate with DORA — watch for drift" },
+  { max:5.0, label:"Excellent",   cls:"score-excellent",   action:"Benchmark — document what works" },
+];
+const TRENDS = { S:"-0.3", P:"stable", A:"-0.5", C:"-0.4", E:"-0.6" };
+const DIMS = [
+  { id:"S", name:"Satisfaction",     trend:"-0.3" },
+  { id:"P", name:"Performance",      trend:"stable" },
+  { id:"A", name:"Activity",         trend:"-0.5" },
+  { id:"C", name:"Communication",    trend:"-0.4" },
+  { id:"E", name:"Efficiency",       trend:"-0.6" },
+];
+
+function getBand(score) {
+  for (const b of BANDS) if (score <= b.max) return b;
+  return BANDS[BANDS.length - 1];
+}
+
+function getPriority(score, trend) {
+  const drop = trend !== "stable" ? Math.abs(parseFloat(trend)) : 0;
+  if (score < 2.9 || drop > 0.39) return { flag:"P1", cls:"flag-p1" };
+  if (score < 3.5) return { flag:"P2", cls:"flag-p2" };
+  return { flag:"P3", cls:"flag-p3" };
+}
+
+function updateAnalysis() {
+  const scores = {
+    S: parseFloat(document.getElementById('scoreS').value) || 2.4,
+    P: parseFloat(document.getElementById('scoreP').value) || 3.1,
+    A: parseFloat(document.getElementById('scoreA').value) || 3.8,
+    C: parseFloat(document.getElementById('scoreC').value) || 2.6,
+    E: parseFloat(document.getElementById('scoreE').value) || 2.2,
+  };
+
+  // Phase 1: Triage table
+  const tbody = document.getElementById('triageBody');
+  tbody.innerHTML = '';
+  DIMS.forEach(d => {
+    const s = scores[d.id];
+    const band = getBand(s);
+    const drop = d.trend !== "stable" ? Math.abs(parseFloat(d.trend)) : 0;
+    const prio = getPriority(s, d.trend);
+    const trendDisplay = d.trend === "stable" ? "→ stable" : `↓ ${d.trend}`;
+    const trendAlert = drop > 0.39 ? " ⚠️ &gt;0.4 drop!" : "";
+    let crossPattern = "—";
+    if (d.id === 'S' && scores['E'] < 2.9) crossPattern = "🔴 Low S + Low E: tooling harm";
+    else if (d.id === 'S' && scores['P'] >= 3.5) crossPattern = "🟡 Low S + Healthy P: attrition risk";
+    else if (d.id === 'A' && scores['S'] < 2.9 && s > 3.4) crossPattern = "🟠 High A + Low S: hidden toil";
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${d.id}</strong> — ${d.name}</td>
+      <td><span class="score-badge ${band.cls}">${s.toFixed(1)}</span></td>
+      <td>${band.label}</td>
+      <td><span class="${prio.cls}">${prio.flag}</span></td>
+      <td style="font-family:'DM Mono'">${trendDisplay}${trendAlert}</td>
+      <td style="font-size:11px;">${crossPattern}</td>
+      <td style="font-size:11px;color:#555;">${band.action}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Cross-pattern alert
+  const cp = document.getElementById('crossPatternAlert');
+  const patterns = [];
+  if (scores.S < 2.9 && scores.E < 2.9) patterns.push('<span style="background:var(--p1bg);color:var(--p1c);padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;display:inline-block;margin:4px;">⚠️ Low S + Low E detected — tooling is actively harming developer wellbeing. Highest AI ROI opportunity in entire SPACE framework.</span>');
+  if (scores.S < 2.9 && scores.P >= 3.3) patterns.push('<span style="background:#FFF3E0;color:#E65100;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;display:inline-block;margin:4px;">⚠️ Low S + Moderate P — unsustainable heroics pattern. Attrition risk not visible in output metrics.</span>');
+  if (scores.A > 3.5 && scores.S < 2.9) patterns.push('<span style="background:var(--p2bg);color:var(--p2c);padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;display:inline-block;margin:4px;">⚠️ High A + Low S — hidden toil pattern. Velocity review would miss this entirely.</span>');
+  cp.innerHTML = patterns.length > 0 ? '<div style="margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--grey2);">Cross-Dimension Alerts</div>' + patterns.join('') : '';
+}
+
+// Run on load
+updateAnalysis();
+</script>
+</body>
+</html>
