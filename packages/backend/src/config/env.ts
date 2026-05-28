@@ -19,4 +19,10 @@ export const config = {
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '7d',
   },
+  foundry: {
+    endpoint: process.env.AZURE_FOUNDRY_ENDPOINT ?? '',
+    apiKey: process.env.AZURE_FOUNDRY_API_KEY ?? '',
+    deployment: process.env.AZURE_FOUNDRY_DEPLOYMENT ?? '',
+    apiVersion: process.env.AZURE_FOUNDRY_API_VERSION ?? '2024-10-21',
+  },
 };

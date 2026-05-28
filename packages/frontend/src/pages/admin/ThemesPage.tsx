@@ -41,6 +41,21 @@ interface TaggedAnswer {
 }
 interface TaggedResponse { items: TaggedAnswer[]; }
 
+interface AiAnalyzeResponse {
+  createdCount: number;
+  tagCount: number;
+  predefinedThemeCount?: number;
+  items: Array<{
+    id: string;
+    themeName: string;
+    status: 'PROMOTE' | 'INVESTIGATE' | 'MONITOR';
+    respondentCount: number;
+    percentage: number;
+    tagCount: number;
+  }>;
+  note?: string;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   PROMOTE: 'bg-emerald-100 text-emerald-700 border-emerald-300',
   INVESTIGATE: 'bg-amber-100 text-amber-800 border-amber-300',
@@ -133,7 +148,7 @@ function ThemesWorkspace({ companyId, campaignId }: { companyId: string; campaig
   const qc = useQueryClient();
   const base = `/api/companies/${companyId}/campaigns/${campaignId}/themes`;
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
+  const [replaceExistingWithAi, setReplaceExistingWithAi] = useState(true);
 
   const themes = useQuery({
     queryKey: ['themes', campaignId],
@@ -146,35 +161,60 @@ function ThemesWorkspace({ companyId, campaignId }: { companyId: string; campaig
     }
   }, [themes.data, selectedThemeId]);
 
-  const create = useMutation({
-    mutationFn: (body: Partial<Theme>) => api<Theme>(base, { method: 'POST', body }),
-    onSuccess: (t) => {
+  const aiAnalyze = useMutation({
+    mutationFn: () =>
+      api<AiAnalyzeResponse>(`${base}/ai-analyze`, {
+        method: 'POST',
+        body: { replaceExisting: replaceExistingWithAi },
+      }),
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['themes', campaignId] });
-      setSelectedThemeId(t.id);
-      setShowCreate(false);
+      qc.invalidateQueries({ queryKey: ['theme-untagged'] });
+      qc.invalidateQueries({ queryKey: ['theme-tagged'] });
+      if (result.items[0]) setSelectedThemeId(result.items[0].id);
     },
   });
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <aside className="lg:col-span-1 bg-white rounded-lg border border-slate-200 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-sm">Themes</h2>
+        <div className="mb-3 rounded border border-blue-200 bg-blue-50 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">
+            AI Phase 2
+          </div>
+          <div className="text-[11px] text-slate-700 mb-2">
+            AI does not create new theme names. It tags each response to the closest predefined questionnaire theme.
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-700 mb-2">
+            <input
+              type="checkbox"
+              checked={replaceExistingWithAi}
+              onChange={(e) => setReplaceExistingWithAi(e.target.checked)}
+            />
+            Replace existing themes before AI run
+          </label>
           <button
-            onClick={() => setShowCreate((v) => !v)}
-            className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800"
+            onClick={() => aiAnalyze.mutate()}
+            disabled={aiAnalyze.isPending}
+            className="w-full text-xs px-2 py-1.5 rounded bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50"
           >
-            {showCreate ? 'Cancel' : '+ New'}
+            {aiAnalyze.isPending ? 'Analyzing with Azure Foundry...' : 'Run AI Open-Text Analysis'}
           </button>
+          {aiAnalyze.isSuccess && (
+            <div className="mt-2 text-[11px] text-slate-700">
+              Created {aiAnalyze.data.createdCount} predefined themes and {aiAnalyze.data.tagCount} AI tags.
+              {aiAnalyze.data.note ? ` ${aiAnalyze.data.note}` : ''}
+            </div>
+          )}
+          {aiAnalyze.error && (
+            <div className="mt-2 text-[11px] text-red-600">{aiAnalyze.error.message}</div>
+          )}
         </div>
 
-        {showCreate && (
-          <ThemeCreateForm
-            pending={create.isPending}
-            error={create.error?.message}
-            onSubmit={(b) => create.mutate(b)}
-          />
-        )}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-sm">Themes</h2>
+          <div className="text-[11px] text-slate-500">Predefined by questionnaire</div>
+        </div>
 
         {themes.isLoading && <div className="text-sm text-slate-500">Loading…</div>}
         <ul className="divide-y divide-slate-100">

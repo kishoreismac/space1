@@ -94,12 +94,22 @@ afterAll(async () => {
 describe('themes', () => {
   const base = () => `/api/companies/${companyId}/campaigns/${campaignId}/themes`;
 
+  it('returns 503 for ai-analyze when Foundry is not configured', async () => {
+    const r = await request(app)
+      .post(`${base()}/ai-analyze`)
+      .set('authorization', `Bearer ${token}`)
+      .send({ replaceExisting: true });
+
+    expect(r.status).toBe(503);
+    expect(r.body.error).toMatch(/Azure Foundry is not configured/i);
+  });
+
   it('creates a theme', async () => {
     const r = await request(app)
       .post(base())
       .set('authorization', `Bearer ${token}`)
       .send({
-        themeName: 'Slow build pipeline',
+        themeName: 'Open-ended efficiency blocker',
         description: 'CI takes too long',
         jtbdStatement: 'When I push code, I want fast feedback so I can iterate.',
         status: 'INVESTIGATE',

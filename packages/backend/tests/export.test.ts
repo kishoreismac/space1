@@ -63,7 +63,7 @@ beforeAll(async () => {
   await request(app)
     .post(`/api/companies/${companyId}/campaigns/${campaignId}/themes`)
     .set('authorization', `Bearer ${token}`)
-    .send({ themeName: 'Theme A', jtbdStatement: 'JTBD' });
+    .send({ themeName: 'Open-ended performance blocker', jtbdStatement: 'JTBD' });
   await request(app)
     .post(`/api/companies/${companyId}/campaigns/${campaignId}/triangulation/blockers`)
     .set('authorization', `Bearer ${token}`)
@@ -117,7 +117,7 @@ describe('CSV exports', () => {
       .get(`/api/companies/${companyId}/campaigns/${campaignId}/export/themes.csv`)
       .set('authorization', `Bearer ${token}`);
     expect(r.status).toBe(200);
-    expect(r.text).toContain('Theme A');
+    expect(r.text).toContain('Open-ended performance blocker');
     expect(r.text).toContain('JTBD');
   });
 });
