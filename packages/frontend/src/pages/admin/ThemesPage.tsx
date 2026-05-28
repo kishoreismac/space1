@@ -428,6 +428,8 @@ function ThemeDetail({
         />
       </div>
 
+      <RelatedQuestionsPanel base={base} themeId={themeId} />
+
       <div className="bg-white rounded-lg border border-slate-200 p-5">
         <h4 className="font-semibold text-sm mb-3">Tagged answers ({tagged.data?.items.length ?? 0})</h4>
         {tagged.isLoading ? (
@@ -558,6 +560,110 @@ function EditableField({
         </p>
       ) : (
         <p className="text-xs text-slate-400 italic">— not set —</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Auto-generate themes from open-text survey answers ─────────────────
+function AutoGenerateButton({ base, onDone }: { base: string; onDone: () => void }) {
+  const mutation = useMutation({
+    mutationFn: () => api<{ created: number; updated: number; totalThemes: number }>(
+      `${base}/auto-generate`,
+      { method: 'POST', body: {} },
+    ),
+    onSuccess: () => onDone(),
+  });
+  return (
+    <button
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      title="Cluster open-text answers and auto-create / update themes"
+      className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50"
+    >
+      {mutation.isPending ? '…' : '✨ Auto'}
+    </button>
+  );
+}
+
+// ─── Related questions panel for a selected theme ───────────────────────
+interface RelatedQuestionRow {
+  questionId: string;
+  questionNumber: number;
+  questionText: string;
+  respondentCount: number;
+  answerCount: number;
+  percentage: number;
+}
+interface RoleBreakdown { roleLabel: string; respondentCount: number; percentage: number }
+interface ThemeDetail {
+  id: string;
+  totalRespondents: number;
+  questions: RelatedQuestionRow[];
+  roles: RoleBreakdown[];
+}
+function RelatedQuestionsPanel({ base, themeId }: { base: string; themeId: string }) {
+  const detail = useQuery({
+    queryKey: ['theme-detail', themeId],
+    queryFn: () => api<ThemeDetail>(`${base}/${themeId}/detail`),
+  });
+  if (detail.isLoading) {
+    return <div className="bg-white rounded-lg border border-slate-200 p-5 text-sm text-slate-500">Loading related questions…</div>;
+  }
+  if (!detail.data) return null;
+  const d = detail.data;
+  const questions = d.questions ?? [];
+  const roles = d.roles ?? [];
+  const totalRespondents = d.totalRespondents ?? 0;
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <header className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+        <h4 className="font-semibold text-sm">Related questions</h4>
+        <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+          {questions.length} question{questions.length === 1 ? '' : 's'} · {totalRespondents} respondents
+        </span>
+      </header>
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-slate-600">
+          <tr>
+            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase">Q#</th>
+            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase">Question</th>
+            <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase">Respondents</th>
+            <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase">Answers</th>
+            <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase w-40">% of campaign</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {questions.length === 0 && (
+            <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400 italic">No related questions yet</td></tr>
+          )}
+          {questions.map((q) => (
+            <tr key={q.questionId} className="hover:bg-slate-50">
+              <td className="px-3 py-2 text-slate-500 tabular-nums">Q{q.questionNumber}</td>
+              <td className="px-3 py-2 text-slate-800 max-w-[420px]"><div className="truncate" title={q.questionText}>{q.questionText}</div></td>
+              <td className="px-3 py-2 text-right tabular-nums">{q.respondentCount}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{q.answerCount}</td>
+              <td className="px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-slate-100 rounded overflow-hidden">
+                    <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, q.percentage)}%` }} />
+                  </div>
+                  <span className="text-[11px] text-slate-600 tabular-nums w-10 text-right">{q.percentage.toFixed(0)}%</span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {roles.length > 0 && (
+        <div className="px-5 py-3 border-t border-slate-200 flex flex-wrap gap-2 text-[11px]">
+          <span className="text-slate-500 uppercase font-semibold tracking-wide mr-1">Roles:</span>
+          {roles.map((r) => (
+            <span key={r.roleLabel} className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+              {r.roleLabel} · {r.respondentCount}
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );

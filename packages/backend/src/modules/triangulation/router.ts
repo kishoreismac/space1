@@ -356,3 +356,186 @@ triangulationRouter.get('/candidates', async (req, res, next) => {
     next(e);
   }
 });
+
+// ─── Auto-seed validated blockers from survey signals ─────────────────
+// Creates a Blocker for each candidate (low dimension + promoted theme + red step)
+// and attaches ValidationSignal records linking back to the survey/theme/journey
+// evidence. Idempotent: skips candidates with an existing Blocker of the same title.
+triangulationRouter.post(
+  '/auto-seed',
+  requireRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'ANALYST'),
+  async (req, res, next) => {
+    try {
+      const { companyId, campaignId } = req.params as {
+        companyId: string;
+        campaignId: string;
+      };
+      assertCompanyAccess(req.auth, companyId);
+      await loadCampaign(companyId, campaignId);
+
+      // ── Reuse the candidate query logic inline ──
+      const dimAgg = await prisma.$queryRawUnsafe<
+        { code: string; name: string; avg: number; count: number }[]
+      >(
+        `SELECT d.code as code, d.name as name,
+                AVG(CAST(a.numericValue AS REAL)) as avg,
+                COUNT(*) as count
+           FROM Answer a
+           JOIN Submission s ON s.id = a.submissionId
+           JOIN Question q ON q.id = a.questionId
+           JOIN QuestionDimension d ON d.id = q.dimensionId
+          WHERE s.campaignId = ?
+            AND s.status = 'COMPLETED'
+            AND a.numericValue IS NOT NULL
+          GROUP BY d.id
+          HAVING AVG(CAST(a.numericValue AS REAL)) < 3.5
+          ORDER BY avg ASC`,
+        campaignId,
+      );
+      const themes = await prisma.openTextTheme.findMany({
+        where: { campaignId, status: { in: ['PROMOTE', 'INVESTIGATE'] } },
+        orderBy: [{ respondentCount: 'desc' }],
+        take: 10,
+      });
+      const redSteps = await prisma.journeyMapStep.findMany({
+        where: { session: { campaignId }, frictionLevel: 'RED' },
+        orderBy: { dotVotes: 'desc' },
+        take: 10,
+      });
+      const totalRespondents = await prisma.submission.count({
+        where: { campaignId, status: 'COMPLETED' },
+      });
+
+      const existing = await prisma.blocker.findMany({ where: { campaignId } });
+      const existingTitles = new Set(existing.map((b) => b.title.toLowerCase()));
+
+      let created = 0;
+      const summary: Array<{ id: string; title: string; severity: string; sources: number }> = [];
+
+      const sevFromScore = (avg: number) => (avg < 2.0 ? 'P1' : avg < 2.5 ? 'P2' : avg < 3.0 ? 'P3' : 'P4');
+
+      // 1) From low dimensions
+      for (const d of dimAgg) {
+        const title = `Low ${d.name} signal (avg ${Number(d.avg).toFixed(2)})`;
+        if (existingTitles.has(title.toLowerCase())) continue;
+        const matchedThemes = themes.filter((t) =>
+          t.themeName.toLowerCase().includes(d.name.toLowerCase()),
+        );
+        const sources = 1 + (matchedThemes.length > 0 ? 1 : 0);
+        const b = await prisma.blocker.create({
+          data: {
+            campaignId,
+            title,
+            description: `Auto-seeded from Phase 1 survey scores. Dimension averaged ${Number(d.avg).toFixed(2)} across ${d.count} responses.`,
+            sourcePhase: 'TRIANGULATION',
+            dimensionCode: d.code,
+            severity: sevFromScore(Number(d.avg)),
+            evidenceSummary: `Survey mean ${Number(d.avg).toFixed(2)} / 5 (n=${d.count}). ${matchedThemes.length} corroborating theme(s).`,
+            reachPercentage: totalRespondents > 0 ? 100 : null,
+            aiFit: 'INVESTIGATE',
+            status: 'OPEN',
+          },
+        });
+        await prisma.validationSignal.create({
+          data: {
+            campaignId,
+            blockerId: b.id,
+            signalType: 'SURVEY',
+            signalName: `${d.name} dimension mean`,
+            evidenceValue: Number(d.avg).toFixed(2),
+            evidenceDescription: `Avg ${d.name} score across ${d.count} responses.`,
+            confirmed: true,
+          },
+        });
+        for (const t of matchedThemes) {
+          await prisma.validationSignal.create({
+            data: {
+              campaignId,
+              blockerId: b.id,
+              signalType: 'THEME',
+              signalName: t.themeName,
+              evidenceValue: `${t.respondentCount} respondents (${t.percentage}%)`,
+              evidenceDescription: t.jtbdStatement,
+              confirmed: t.status === 'PROMOTE',
+            },
+          });
+        }
+        existingTitles.add(title.toLowerCase());
+        created += 1;
+        summary.push({ id: b.id, title, severity: b.severity, sources });
+      }
+
+      // 2) From promoted themes not already covered
+      for (const t of themes) {
+        const title = t.themeName;
+        if (existingTitles.has(title.toLowerCase())) continue;
+        const sev = t.percentage >= 40 ? 'P1' : t.percentage >= 25 ? 'P2' : 'P3';
+        const b = await prisma.blocker.create({
+          data: {
+            campaignId,
+            title,
+            description: t.description ?? `Auto-seeded from Phase 2 theme analysis (${t.percentage}% of campaign).`,
+            sourcePhase: 'TRIANGULATION',
+            severity: sev,
+            evidenceSummary: `Open-text theme — ${t.respondentCount} respondents (${t.percentage}% of campaign).`,
+            reachPercentage: t.percentage,
+            aiFit: 'CANDIDATE',
+            status: 'OPEN',
+          },
+        });
+        await prisma.validationSignal.create({
+          data: {
+            campaignId,
+            blockerId: b.id,
+            signalType: 'THEME',
+            signalName: t.themeName,
+            evidenceValue: `${t.respondentCount} respondents (${t.percentage}%)`,
+            evidenceDescription: t.jtbdStatement,
+            confirmed: t.status === 'PROMOTE',
+          },
+        });
+        existingTitles.add(title.toLowerCase());
+        created += 1;
+        summary.push({ id: b.id, title, severity: sev, sources: 1 });
+      }
+
+      // 3) From red journey steps
+      for (const s of redSteps) {
+        const title = s.stepName;
+        if (existingTitles.has(title.toLowerCase())) continue;
+        const sev = s.dotVotes >= 5 ? 'P1' : s.dotVotes >= 3 ? 'P2' : 'P3';
+        const b = await prisma.blocker.create({
+          data: {
+            campaignId,
+            title,
+            description: s.rootCause ?? `Auto-seeded from Phase 4 journey workshop (${s.dotVotes} dot-votes).`,
+            sourcePhase: 'JOURNEY',
+            severity: sev,
+            evidenceSummary: `Workshop dot-votes: ${s.dotVotes}. Root cause: ${s.rootCause ?? '—'}.`,
+            aiFit: 'CANDIDATE',
+            status: 'OPEN',
+          },
+        });
+        await prisma.validationSignal.create({
+          data: {
+            campaignId,
+            blockerId: b.id,
+            signalType: 'JOURNEY_MAP',
+            signalName: `Journey step: ${s.stepName}`,
+            evidenceValue: `${s.dotVotes} dot-votes`,
+            evidenceDescription: s.rootCause,
+            confirmed: true,
+          },
+        });
+        existingTitles.add(title.toLowerCase());
+        created += 1;
+        summary.push({ id: b.id, title, severity: sev, sources: 1 });
+      }
+
+      recordAudit(req, 'triangulation.autoSeed', 'Blocker', campaignId, { created });
+      res.json({ created, totalRespondents, blockers: summary });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
