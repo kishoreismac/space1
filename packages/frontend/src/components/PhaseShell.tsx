@@ -191,13 +191,25 @@ function DecisionGate({ cfg }: { cfg: PhaseConfig }) {
   );
 }
 
-export function PhaseShell({ phase, children }: { phase: PhaseId; children: ReactNode }) {
+export function PhaseShell({
+  phase,
+  children,
+  showOverview = true,
+}: {
+  phase: PhaseId;
+  children: ReactNode;
+  showOverview?: boolean;
+}) {
   const cfg = PHASE_CONFIG[phase];
   return (
     <div>
       <PhaseHeader cfg={cfg} />
-      <ActivityGrid cfg={cfg} />
-      <DecisionGate cfg={cfg} />
+      {showOverview && (
+        <>
+          <ActivityGrid cfg={cfg} />
+          <DecisionGate cfg={cfg} />
+        </>
+      )}
       <div>{children}</div>
     </div>
   );

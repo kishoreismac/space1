@@ -50,6 +50,12 @@ npm install
 cp packages/backend/.env.example packages/backend/.env
 #  → optionally edit JWT secrets and admin credentials
 
+# Optional: enable AI-powered Phase 2 open-text analysis (Azure Foundry)
+# AZURE_FOUNDRY_ENDPOINT=https://<your-resource>.openai.azure.com
+# AZURE_FOUNDRY_API_KEY=<your-key>
+# AZURE_FOUNDRY_DEPLOYMENT=<your-model-deployment>
+# AZURE_FOUNDRY_API_VERSION=2024-10-21
+
 # 3. create the SQLite database and apply the schema
 npm --workspace @space/backend run db:migrate
 

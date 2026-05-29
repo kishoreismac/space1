@@ -1,19 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Campaign, Company } from '@space/shared';
+import { PhaseShell } from '../../components/PhaseShell';
 import { api } from '../../lib/api';
 import { useAuth } from '../../stores/auth';
-import { PhaseShell } from '../../components/PhaseShell';
 
 interface CompaniesResponse { items: Company[]; }
 interface CampaignsResponse { items: Campaign[]; }
 
 type Severity = 'P1' | 'P2' | 'P3' | 'P4';
-type AIFit = 'INVESTIGATE' | 'CANDIDATE' | 'STRONG_FIT' | 'NOT_FIT';
-type BlockerStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'DROPPED';
-type SignalType =
-  | 'DORA' | 'PR' | 'CICD' | 'IDE' | 'INCIDENT'
-  | 'CALENDAR' | 'SLACK' | 'JOURNEY_MAP' | 'SURVEY' | 'THEME' | 'OTHER';
+type SignalType = 'DORA' | 'SURVEY' | 'THEME';
+type ScoreValue = 'CONFIRMED' | 'PARTIAL' | 'NOT_CONFIRMED';
+
+interface DoraMetrics {
+  leadTimeForChanges: string | null;
+  deploymentFrequency: string | null;
+  mttr: string | null;
+  changeFailureRate: string | null;
+  avgBuildTimeMinutes: string | null;
+  flakyTestFailureRate: string | null;
+  prAvgReviewIterations: string | null;
+  prFirstReviewLagHours: string | null;
+  ideAvgActiveSessionLengthMinutes: string | null;
+}
+
+interface DoraMetricsResponse {
+  current: DoraMetrics;
+  previous: DoraMetrics;
+  updatedAt: { current: string | null; previous: string | null };
+}
 
 interface Blocker {
   id: string;
@@ -21,19 +36,11 @@ interface Blocker {
   description: string | null;
   sourcePhase: string | null;
   dimensionCode: string | null;
-  sdlcPhase: string | null;
   severity: Severity;
-  affectedTeams: string | null;
-  reachPercentage: number | null;
-  estimatedHoursLost: number | null;
   evidenceSummary: string | null;
-  aiFit: AIFit;
-  status: BlockerStatus;
-  signalCount: number;
-  feasibilityScore: number | null;
-  feasibilityClass: string | null;
+  status: string;
+  aiFit: string;
 }
-interface BlockersResponse { items: Blocker[]; }
 
 interface Signal {
   id: string;
@@ -44,39 +51,99 @@ interface Signal {
   evidenceDescription: string | null;
   confirmed: boolean;
 }
-interface SignalsResponse { items: Signal[]; }
 
-interface Candidates {
-  dimensions: { code: string; name: string; avgScore: number; responses: number }[];
-  themes: {
-    id: string;
-    themeName: string;
-    respondentCount: number;
-    percentage: number;
-    jtbdStatement: string | null;
-    status: string;
-  }[];
-  journeySteps: {
-    id: string;
-    stepName: string;
-    dotVotes: number;
-    rootCause: string | null;
-    jtbdStatement: string | null;
-    facilitator: string | null;
-  }[];
+type MatrixBlocker = Blocker & { signals: Signal[] };
+interface MatrixResponse { items: MatrixBlocker[]; }
+interface AutoSeedResponse {
+  created: number;
+  totalRespondents: number;
+  blockers: Array<{ id: string; title: string; severity: Severity; sources: number }>;
 }
 
-const SEV_COLORS: Record<Severity, string> = {
-  P1: 'bg-red-100 text-red-700 border-red-300',
-  P2: 'bg-orange-100 text-orange-700 border-orange-300',
-  P3: 'bg-amber-100 text-amber-800 border-amber-300',
-  P4: 'bg-slate-100 text-slate-600 border-slate-300',
+const EMPTY_DORA: DoraMetrics = {
+  leadTimeForChanges: null,
+  deploymentFrequency: null,
+  mttr: null,
+  changeFailureRate: null,
+  avgBuildTimeMinutes: null,
+  flakyTestFailureRate: null,
+  prAvgReviewIterations: null,
+  prFirstReviewLagHours: null,
+  ideAvgActiveSessionLengthMinutes: null,
 };
-const AI_FIT_COLORS: Record<AIFit, string> = {
-  STRONG_FIT: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-  CANDIDATE: 'bg-sky-100 text-sky-700 border-sky-300',
-  INVESTIGATE: 'bg-slate-100 text-slate-600 border-slate-300',
-  NOT_FIT: 'bg-rose-100 text-rose-700 border-rose-300',
+
+const DORA_FIELDS: Array<{
+  key: keyof DoraMetrics;
+  label: string;
+  placeholder: string;
+  help: string;
+}> = [
+  {
+    key: 'leadTimeForChanges',
+    label: 'Lead Time for Changes',
+    placeholder: 'e.g. 3.2 days',
+    help: 'Maps to P dimension (performance) + E dimension (efficiency)',
+  },
+  {
+    key: 'deploymentFrequency',
+    label: 'Deployment Frequency',
+    placeholder: 'e.g. 2.3 per week',
+    help: 'Maps to E dimension (efficiency) + C dimension (approval gates)',
+  },
+  {
+    key: 'mttr',
+    label: 'MTTR (Mean Time to Restore)',
+    placeholder: 'e.g. 3.1 hours',
+    help: 'Maps to E dimension (incident RCA speed)',
+  },
+  {
+    key: 'changeFailureRate',
+    label: 'Change Failure Rate',
+    placeholder: 'e.g. 18%',
+    help: 'Maps to P dimension + C dimension (requirements)',
+  },
+  {
+    key: 'avgBuildTimeMinutes',
+    label: 'Avg Build Time (Minutes)',
+    placeholder: 'e.g. 38',
+    help: 'Confirms build and pipeline drag.',
+  },
+  {
+    key: 'flakyTestFailureRate',
+    label: 'Flaky Test / Failure Rate (%)',
+    placeholder: 'e.g. 22',
+    help: 'Confirms CI reliability friction.',
+  },
+  {
+    key: 'prAvgReviewIterations',
+    label: 'PR Avg Review Iterations',
+    placeholder: 'e.g. 3.2',
+    help: 'Maps to C and A dimensions.',
+  },
+  {
+    key: 'prFirstReviewLagHours',
+    label: 'PR First-Review Lag (Hrs)',
+    placeholder: 'e.g. 22',
+    help: 'Confirms review wait states.',
+  },
+  {
+    key: 'ideAvgActiveSessionLengthMinutes',
+    label: 'IDE Avg Active Session Length (Minutes)',
+    placeholder: 'e.g. 11',
+    help: 'Below 20 min can confirm context-switch overload.',
+  },
+];
+
+const SCORE_OPTIONS: Array<{ value: ScoreValue; label: string }> = [
+  { value: 'CONFIRMED', label: 'Confirmed' },
+  { value: 'PARTIAL', label: 'Partial / needs follow-up' },
+  { value: 'NOT_CONFIRMED', label: 'Not confirmed' },
+];
+
+const SIGNAL_COPY: Record<SignalType, { name: string; label: string }> = {
+  SURVEY: { name: 'Survey signal', label: 'Survey Signal Confirmed?' },
+  DORA: { name: 'Quantitative data', label: 'Quant Data Confirmed?' },
+  THEME: { name: 'Open text theme', label: 'Open Text Confirmed?' },
 };
 
 export default function TriangulationPage() {
@@ -89,6 +156,7 @@ export default function TriangulationPage() {
     queryKey: ['companies'],
     queryFn: () => api<CompaniesResponse>('/api/companies'),
   });
+
   useEffect(() => {
     const first = companies.data?.items[0];
     if (!companyId && first) setCompanyId(first.id);
@@ -99,64 +167,64 @@ export default function TriangulationPage() {
     queryFn: () => api<CampaignsResponse>(`/api/companies/${companyId}/campaigns`),
     enabled: !!companyId,
   });
+
   useEffect(() => {
     const first = campaigns.data?.items[0];
     if (!campaignId && first) setCampaignId(first.id);
   }, [campaigns.data, campaignId]);
 
   return (
-    <PhaseShell phase="P3">
-    <div className="space-y-6">
-
-      <div className="bg-white rounded-lg border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
-        {role === 'SUPER_ADMIN' && (
+    <PhaseShell phase="P3" showOverview={false}>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-stone-200 bg-[#f8f5ee] px-4 py-3">
+          {role === 'SUPER_ADMIN' && (
+            <label className="text-sm">
+              <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">
+                Company
+              </span>
+              <select
+                value={companyId ?? ''}
+                onChange={(e) => {
+                  setCompanyId(e.target.value || null);
+                  setCampaignId(null);
+                }}
+                className="min-w-[220px] rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Select company</option>
+                {companies.data?.items.map((company) => (
+                  <option key={company.id} value={company.id}>{company.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="text-sm">
-            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
-              Company
+            <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">
+              Campaign
             </span>
             <select
-              value={companyId ?? ''}
-              onChange={(e) => {
-                setCompanyId(e.target.value || null);
-                setCampaignId(null);
-              }}
-              className="border border-slate-300 rounded px-2 py-1.5 text-sm"
+              value={campaignId ?? ''}
+              onChange={(e) => setCampaignId(e.target.value || null)}
+              disabled={!companyId}
+              className="min-w-[280px] rounded-md border border-stone-300 bg-white px-3 py-2 text-sm disabled:opacity-60"
             >
-              <option value="">—</option>
-              {companies.data?.items.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              <option value="">Select campaign</option>
+              {campaigns.data?.items.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.title} ({campaign.status})
+                </option>
               ))}
             </select>
           </label>
-        )}
-        <label className="text-sm">
-          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
-            Campaign
-          </span>
-          <select
-            value={campaignId ?? ''}
-            onChange={(e) => setCampaignId(e.target.value || null)}
-            disabled={!companyId}
-            className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-[240px]"
-          >
-            <option value="">—</option>
-            {campaigns.data?.items.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title} ({c.status})
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {companyId && campaignId ? (
-        <TriangulationWorkspace companyId={companyId} campaignId={campaignId} />
-      ) : (
-        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
-          Pick a campaign to triangulate.
         </div>
-      )}
-    </div>
+
+        {companyId && campaignId ? (
+          <TriangulationWorkspace companyId={companyId} campaignId={campaignId} />
+        ) : (
+          <div className="rounded-lg border border-stone-200 bg-[#f8f5ee] p-8 text-center text-sm text-stone-500">
+            Select a campaign to enter DORA metrics and triangulate blockers.
+          </div>
+        )}
+      </div>
     </PhaseShell>
   );
 }
@@ -168,680 +236,695 @@ function TriangulationWorkspace({
   companyId: string;
   campaignId: string;
 }) {
-  const qc = useQueryClient();
   const base = `/api/companies/${companyId}/campaigns/${campaignId}/triangulation`;
-  const [selectedBlockerId, setSelectedBlockerId] = useState<string | null>(null);
 
-  const blockers = useQuery({
-    queryKey: ['blockers', campaignId],
-    queryFn: () => api<BlockersResponse>(`${base}/blockers`),
-  });
-  const candidates = useQuery({
-    queryKey: ['candidates', campaignId],
-    queryFn: () => api<Candidates>(`${base}/candidates`),
+  return (
+    <div className="space-y-4">
+      <ActivityBlock
+        number="1"
+        title="DORA Metrics Baseline Template"
+        helper="Enter current cycle DORA data"
+        defaultOpen
+      >
+        <DoraMetricsSection base={base} campaignId={campaignId} />
+      </ActivityBlock>
+
+      <ActivityBlock
+        number="2"
+        title="Signal Triangulation Matrix"
+        helper="Add each candidate blocker and score its signal sources"
+        defaultOpen
+      >
+        <SignalTriangulationMatrix base={base} campaignId={campaignId} />
+      </ActivityBlock>
+    </div>
+  );
+}
+
+function ActivityBlock({
+  number,
+  title,
+  helper,
+  defaultOpen = false,
+  children,
+}: {
+  number: string;
+  title: string;
+  helper: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="overflow-hidden rounded-md border border-stone-300 bg-[#f8f5ee] shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-3 bg-[#fffaf0] px-4 py-3 text-left hover:bg-[#f5ead7]"
+      >
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#135b31] text-sm font-bold text-white">
+          {number}
+        </span>
+        <span className="min-w-0 flex-1 font-semibold text-stone-950">{title}</span>
+        <span className="hidden text-xs font-medium text-stone-500 md:block">{helper}</span>
+        <span className="text-xs font-bold text-stone-600">{open ? 'v' : '>'}</span>
+      </button>
+      {open && <div className="border-t border-stone-300 px-5 py-6">{children}</div>}
+    </section>
+  );
+}
+
+function DoraMetricsSection({ base, campaignId }: { base: string; campaignId: string }) {
+  const qc = useQueryClient();
+  const [current, setCurrent] = useState<DoraMetrics>(EMPTY_DORA);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const dora = useQuery({
+    queryKey: ['dora-metrics', campaignId],
+    queryFn: () => api<DoraMetricsResponse>(`${base}/dora-metrics`),
   });
 
   useEffect(() => {
-    if (!selectedBlockerId && blockers.data?.items[0]) {
-      setSelectedBlockerId(blockers.data.items[0].id);
+    if (dora.data) {
+      setCurrent({ ...EMPTY_DORA, ...dora.data.current });
     }
-  }, [blockers.data, selectedBlockerId]);
+  }, [dora.data]);
 
-  const create = useMutation({
-    mutationFn: (body: Partial<Blocker> & { title: string }) =>
-      api<Blocker>(`${base}/blockers`, { method: 'POST', body }),
-    onSuccess: (b) => {
-      qc.invalidateQueries({ queryKey: ['blockers', campaignId] });
-      setSelectedBlockerId(b.id);
+  const save = useMutation({
+    mutationFn: async () => {
+      return api(`${base}/dora-metrics/current`, {
+        method: 'PUT',
+        body: normalizeMetrics(current),
+      });
+    },
+    onSuccess: () => {
+      setSaveError(null);
+      setSaveMessage('DORA metrics saved successfully.');
+      qc.invalidateQueries({ queryKey: ['dora-metrics', campaignId] });
+    },
+    onError: (error) => {
+      setSaveMessage(null);
+      setSaveError(error instanceof Error ? error.message : 'Could not save DORA metrics.');
     },
   });
 
-  const seedFromDimension = (
-    d: Candidates['dimensions'][number],
-  ) =>
-    create.mutate({
-      title: `Low ${d.name} score (${d.avgScore})`,
-      severity: 'P3',
-      sourcePhase: 'QUANTITATIVE',
-      dimensionCode: d.code,
-      evidenceSummary: `Avg ${d.avgScore} across ${d.responses} responses`,
-    });
-  const seedFromTheme = (t: Candidates['themes'][number]) =>
-    create.mutate({
-      title: t.themeName,
-      severity: 'P2',
-      sourcePhase: 'OPEN_TEXT',
-      reachPercentage: t.percentage,
-      evidenceSummary: t.jtbdStatement ?? `${t.respondentCount} respondents`,
-    });
-  const seedFromStep = (s: Candidates['journeySteps'][number]) =>
-    create.mutate({
-      title: s.stepName,
-      severity: 'P2',
-      sourcePhase: 'JOURNEY',
-      evidenceSummary: s.rootCause ?? `${s.dotVotes} dot-votes`,
-    });
-
   return (
-    <div className="space-y-6">
-      <AutoSeedBanner base={base} onSeeded={() => {
-        qc.invalidateQueries({ queryKey: ['blockers', campaignId] });
-        qc.invalidateQueries({ queryKey: ['candidates', campaignId] });
-      }} />
-
-      <CandidatesPanel
-        candidates={candidates.data}
-        loading={candidates.isLoading}
-        onSeedDim={seedFromDimension}
-        onSeedTheme={seedFromTheme}
-        onSeedStep={seedFromStep}
-      />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <aside className="lg:col-span-1 bg-white rounded-lg border border-slate-200 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-sm">Blockers</h2>
-            <button
-              onClick={() =>
-                create.mutate({
-                  title: 'New blocker',
-                  severity: 'P3',
-                  sourcePhase: 'MANUAL',
-                })
-              }
-              className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800"
-            >
-              + Manual
-            </button>
-          </div>
-          {blockers.isLoading && <div className="text-sm text-slate-500">Loading…</div>}
-          <ul className="divide-y divide-slate-100">
-            {blockers.data?.items.map((b) => (
-              <li key={b.id}>
-                <button
-                  onClick={() => setSelectedBlockerId(b.id)}
-                  className={`w-full text-left py-2 px-2 rounded ${
-                    b.id === selectedBlockerId ? 'bg-slate-100' : 'hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="font-medium truncate">{b.title}</span>
-                    <span
-                      className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded border ${SEV_COLORS[b.severity]}`}
-                    >
-                      {b.severity}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    {b.signalCount} signals · {b.aiFit.replace('_', ' ')} · {b.status}
-                  </div>
-                </button>
-              </li>
-            ))}
-            {!blockers.isLoading && (blockers.data?.items.length ?? 0) === 0 && (
-              <li className="text-sm text-slate-500 py-2">No blockers yet — seed one above.</li>
-            )}
-          </ul>
-        </aside>
-
-        <section className="lg:col-span-2">
-          {selectedBlockerId ? (
-            <BlockerDetail
-              base={base}
-              campaignId={campaignId}
-              blockerId={selectedBlockerId}
-              onDeleted={() => {
-                setSelectedBlockerId(null);
-                qc.invalidateQueries({ queryKey: ['blockers', campaignId] });
-              }}
-            />
-          ) : (
-            <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
-              Select or create a blocker.
-            </div>
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function CandidatesPanel({
-  candidates,
-  loading,
-  onSeedDim,
-  onSeedTheme,
-  onSeedStep,
-}: {
-  candidates: Candidates | undefined;
-  loading: boolean;
-  onSeedDim: (d: Candidates['dimensions'][number]) => void;
-  onSeedTheme: (t: Candidates['themes'][number]) => void;
-  onSeedStep: (s: Candidates['journeySteps'][number]) => void;
-}) {
-  return (
-    <div className="bg-white rounded-lg border border-slate-200 p-5">
-      <h3 className="font-semibold text-sm mb-3">Candidate signals</h3>
-      {loading && <div className="text-sm text-slate-500">Loading…</div>}
-      {candidates && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <Candidate
-            title="Low-scoring dimensions"
-            empty="All dimensions above 3.5."
-            items={candidates.dimensions}
-            render={(d) => (
-              <>
-                <div className="font-medium">
-                  {d.name}{' '}
-                  <span className="text-xs text-slate-500">({d.code})</span>
-                </div>
-                <div className="text-xs text-slate-600">
-                  Avg {d.avgScore} · {d.responses} responses
-                </div>
-              </>
-            )}
-            onSeed={onSeedDim}
-          />
-          <Candidate
-            title="Top themes"
-            empty="No promote/investigate themes yet."
-            items={candidates.themes}
-            render={(t) => (
-              <>
-                <div className="font-medium">{t.themeName}</div>
-                <div className="text-xs text-slate-600">
-                  {t.percentage}% · {t.respondentCount} respondents · {t.status}
-                </div>
-              </>
-            )}
-            onSeed={onSeedTheme}
-          />
-          <Candidate
-            title="Red journey steps"
-            empty="No red friction steps logged."
-            items={candidates.journeySteps}
-            render={(s) => (
-              <>
-                <div className="font-medium">{s.stepName}</div>
-                <div className="text-xs text-slate-600">
-                  {s.dotVotes} votes
-                  {s.rootCause ? ` · ${s.rootCause}` : ''}
-                </div>
-              </>
-            )}
-            onSeed={onSeedStep}
-          />
+    <div className="space-y-5">
+      {dora.isError && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Could not load saved DORA data.
         </div>
       )}
+      <div>
+        <DoraCycleCard
+          title=""
+          metrics={current}
+          onChange={setCurrent}
+          updatedAt={dora.data?.updatedAt.current ?? null}
+        />
+      </div>
+      <div>
+        <button
+          type="button"
+          onClick={() => save.mutate()}
+          disabled={save.isPending} //change the color of the button
+          className={`rounded-md px-5 py-3 text-sm font-bold text-white shadow-md shadow-emerald-900/20 ${
+            save.isPending ? 'bg-[#126a5a]' : 'bg-[#17806d] hover:bg-[#126a5a]'
+          }`}
+        >
+          {save.isPending ? 'Saving DORA Data...' : 'Save DORA Data'}
+        </button>
+        {saveMessage && <div className="mt-3 text-sm font-semibold text-[#135b31]">{saveMessage}</div>}
+        {saveError && <div className="mt-3 text-sm font-semibold text-red-700">{saveError}</div>}
+      </div>
     </div>
   );
 }
 
-function Candidate<T>({
+function DoraCycleCard({
   title,
-  items,
-  empty,
-  render,
-  onSeed,
+  metrics,
+  onChange,
+  updatedAt,
 }: {
   title: string;
-  items: T[];
-  empty: string;
-  render: (it: T) => React.ReactNode;
-  onSeed: (it: T) => void;
+  metrics: DoraMetrics;
+  onChange: (metrics: DoraMetrics) => void;
+  updatedAt: string | null;
 }) {
   return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-        {title}
+    <div className="rounded-lg border border-stone-300 bg-[#fffaf0] p-5 shadow-sm">
+      <div className={title ? 'mb-5 flex flex-wrap items-baseline justify-between gap-2' : 'mb-0 flex justify-end'}>
+        {title && <h3 className="font-semibold text-stone-950">{title}</h3>}
+        {updatedAt && (
+          <span className="text-xs text-stone-400">
+            Saved {new Date(updatedAt).toLocaleString()}
+          </span>
+        )}
       </div>
-      {items.length === 0 ? (
-        <div className="text-xs text-slate-400 italic">{empty}</div>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((it, i) => (
-            <li
-              key={i}
-              className="border border-slate-200 rounded p-2 flex items-start justify-between gap-2"
-            >
-              <div className="flex-1 min-w-0">{render(it)}</div>
-              <button
-                onClick={() => onSeed(it)}
-                className="text-xs px-2 py-0.5 rounded bg-slate-900 text-white hover:bg-slate-800 shrink-0"
-              >
-                + Seed
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="grid gap-4 md:grid-cols-2">
+        {DORA_FIELDS.map((field) => (
+          <label
+            key={field.key}
+            className={field.key === 'ideAvgActiveSessionLengthMinutes' ? 'md:col-span-2' : ''}
+          >
+            <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.18em] text-stone-700">
+              {field.label}
+            </span>
+            <input
+              value={metrics[field.key] ?? ''}
+              onChange={(event) =>
+                onChange({ ...metrics, [field.key]: event.target.value })
+              }
+              placeholder={field.placeholder}
+              className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+            />
+            <span className="mt-2 block text-xs leading-relaxed text-stone-600">{field.help}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
 
-function BlockerDetail({
+function SignalTriangulationMatrix({ base, campaignId }: { base: string; campaignId: string }) {
+  const qc = useQueryClient();
+  const [autoSeedMessage, setAutoSeedMessage] = useState<string | null>(null);
+  const [autoSeedError, setAutoSeedError] = useState<string | null>(null);
+  const matrix = useQuery({
+    queryKey: ['triangulation-matrix', campaignId],
+    queryFn: () => api<MatrixResponse>(`${base}/matrix`),
+  });
+  const dora = useQuery({
+    queryKey: ['dora-metrics', campaignId],
+    queryFn: () => api<DoraMetricsResponse>(`${base}/dora-metrics`),
+  });
+
+  const doraSummary = useMemo(
+    () => buildDoraSummary(dora.data?.current ?? EMPTY_DORA),
+    [dora.data],
+  );
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['triangulation-matrix', campaignId] });
+    qc.invalidateQueries({ queryKey: ['blockers', campaignId] });
+    qc.invalidateQueries({ queryKey: ['program-output', campaignId] });
+  };
+
+  const autoSeed = useMutation({
+    mutationFn: () => api<AutoSeedResponse>(`${base}/auto-seed`, { method: 'POST', body: {} }),
+    onSuccess: (result) => {
+      setAutoSeedError(null);
+      setAutoSeedMessage(
+        result.created > 0
+          ? `Created ${result.created} validated blocker${result.created === 1 ? '' : 's'} from Phase 2 themes and supporting signals. P5 registry and AI feasibility matrix will use these blockers.`
+          : 'Auto analysis completed. No new blockers were created because matching blockers already exist or no qualifying themes were found.',
+      );
+      invalidate();
+    },
+    onError: (error) => {
+      setAutoSeedMessage(null);
+      setAutoSeedError(error instanceof Error ? error.message : 'Auto analysis failed.');
+    },
+  });
+
+  const createBlocker = useMutation({
+    mutationFn: async (payload: NewBlockerPayload) => {
+      const confirmedCount = countConfirmed(payload.survey, payload.quant, payload.openText);
+      const blocker = await api<Blocker>(`${base}/blockers`, {
+        method: 'POST',
+        body: {
+          title: payload.title,
+          description: payload.description || null,
+          sourcePhase: 'TRIANGULATION',
+          severity: severityFromSources(confirmedCount),
+          evidenceSummary: payload.quantEvidence || doraSummary || null,
+          aiFit: confirmedCount >= 2 ? 'CANDIDATE' : 'INVESTIGATE',
+          status: 'OPEN',
+        },
+      });
+      await Promise.all([
+        api<Signal>(`${base}/blockers/${blocker.id}/signals`, {
+          method: 'POST',
+          body: signalBody('SURVEY', payload.survey, null),
+        }),
+        api<Signal>(`${base}/blockers/${blocker.id}/signals`, {
+          method: 'POST',
+          body: signalBody('DORA', payload.quant, payload.quantEvidence || doraSummary),
+        }),
+        api<Signal>(`${base}/blockers/${blocker.id}/signals`, {
+          method: 'POST',
+          body: signalBody('THEME', payload.openText, payload.openTextEvidence || null),
+        }),
+      ]);
+      return blocker;
+    },
+    onSuccess: invalidate,
+  });
+
+  const rows = matrix.data?.items ?? [];
+
+  return (
+    <div className="space-y-7">
+      <div className="rounded-xl border border-[#d8c6a8] bg-[#eee4d3] p-5 shadow-sm">
+        <div className="rounded-lg bg-[#171411] px-7 py-5 text-white shadow-md">
+          <div className="flex items-start gap-4">
+            <span className="mt-1 text-lg font-black text-[#d83b78]">^</span>
+            <div>
+              <h3 className="font-semibold text-[#ffd84d]">
+                Triangulation Gate - 2+ sources required for registry entry
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-stone-200">
+                Survey alone is not sufficient. Add DORA or pipeline data as the second signal.
+                A blocker with 3/3 sources is P1 fast-track, 2/3 is P1 or P2 depending on
+                severity, and 1/3 should be investigated further.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#135b31]/30 bg-[#ecf7ef] p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#135b31]">
+              Auto Seed Validation
+            </div>
+            <h3 className="mt-1 font-semibold text-stone-950">
+              Auto analyse Phase 2 themes and create validated blockers
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-stone-700">
+              Pulls promoted and investigate themes, low survey dimensions, and journey signals into
+              the triangulation matrix. These blockers feed the P5 Validated Blocker Registry and AI
+              Feasibility Matrix automatically.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => autoSeed.mutate()}
+            disabled={autoSeed.isPending}
+            className="rounded-md bg-[#135b31] px-5 py-3 text-sm font-bold text-white shadow-md shadow-emerald-900/20 hover:bg-[#0d4625] disabled:opacity-60"
+          >
+            {autoSeed.isPending ? 'Running Auto Analysis...' : 'Auto Analyse & Seed Blockers'}
+          </button>
+        </div>
+        {autoSeedMessage && (
+          <div className="mt-3 rounded-md border border-[#135b31]/20 bg-white px-3 py-2 text-sm font-semibold text-[#135b31]">
+            {autoSeedMessage}
+          </div>
+        )}
+        {autoSeedError && (
+          <div className="mt-3 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700">
+            {autoSeedError}
+          </div>
+        )}
+      </div>
+
+      {matrix.isLoading ? (
+        <div className="py-12 text-center text-sm text-stone-400">Loading triangulation matrix...</div>
+      ) : rows.length === 0 ? (
+        <EmptyMatrixState />
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-stone-300 bg-[#fffaf0] shadow-sm">
+          <table className="min-w-[1080px] w-full text-sm">
+            <thead className="border-b border-stone-300 bg-[#dfd3bd] text-left text-[11px] uppercase tracking-[0.16em] text-stone-800">
+              <tr>
+                <th className="px-4 py-3">Blocker</th>
+                <th className="px-4 py-3">Survey</th>
+                <th className="px-4 py-3">Quant</th>
+                <th className="px-4 py-3">Open Text</th>
+                <th className="px-4 py-3">Sources</th>
+                <th className="px-4 py-3">Priority</th>
+                <th className="px-4 py-3">Evidence</th>
+                <th className="px-4 py-3">Update</th>
+                <th className="px-4 py-3">Delete</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-200 bg-[#fffaf0]">
+              {rows.map((row) => (
+                <MatrixRow key={row.id} base={base} campaignId={campaignId} row={row} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-[#d8c6a8] bg-[#eee4d3] p-5 shadow-sm">
+        <NewBlockerForm
+          currentDoraSummary={doraSummary}
+          pending={createBlocker.isPending}
+          onSubmit={(payload) => createBlocker.mutate(payload)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmptyMatrixState() {
+  return (
+    <div className="rounded-lg border border-stone-300 bg-[#fffaf0] py-12 text-center shadow-sm">
+      <div className="mx-auto mb-6 h-0 w-0 border-x-[10px] border-b-[18px] border-x-transparent border-b-[#d83b78]" />
+      <p className="text-sm font-medium text-stone-600">
+        No blockers in triangulation matrix yet. Add promoted themes from Phase 2.
+      </p>
+    </div>
+  );
+}
+
+function MatrixRow({
   base,
   campaignId,
-  blockerId,
-  onDeleted,
+  row,
 }: {
   base: string;
   campaignId: string;
-  blockerId: string;
-  onDeleted: () => void;
+  row: MatrixBlocker;
 }) {
   const qc = useQueryClient();
-  const blockers = useQuery({
-    queryKey: ['blockers', campaignId],
-    queryFn: () => api<BlockersResponse>(`${base}/blockers`),
-  });
-  const blocker = blockers.data?.items.find((b) => b.id === blockerId) ?? null;
+  const surveySignal = findSignal(row, 'SURVEY');
+  const doraSignal = findSignal(row, 'DORA');
+  const themeSignal = findSignal(row, 'THEME');
+  const [survey, setSurvey] = useState<ScoreValue>(scoreFromSignal(surveySignal));
+  const [quant, setQuant] = useState<ScoreValue>(scoreFromSignal(doraSignal));
+  const [openText, setOpenText] = useState<ScoreValue>(scoreFromSignal(themeSignal));
+  const [evidence, setEvidence] = useState(doraSignal?.evidenceDescription ?? row.evidenceSummary ?? '');
 
-  const signals = useQuery({
-    queryKey: ['signals', blockerId],
-    queryFn: () => api<SignalsResponse>(`${base}/blockers/${blockerId}/signals`),
-  });
+  useEffect(() => {
+    setSurvey(scoreFromSignal(surveySignal));
+    setQuant(scoreFromSignal(doraSignal));
+    setOpenText(scoreFromSignal(themeSignal));
+    setEvidence(doraSignal?.evidenceDescription ?? row.evidenceSummary ?? '');
+  }, [doraSignal, row.evidenceSummary, surveySignal, themeSignal]);
 
+  const confirmedCount = countConfirmed(survey, quant, openText);
   const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['triangulation-matrix', campaignId] });
     qc.invalidateQueries({ queryKey: ['blockers', campaignId] });
-    qc.invalidateQueries({ queryKey: ['signals', blockerId] });
   };
-
   const update = useMutation({
-    mutationFn: (body: Partial<Blocker>) =>
-      api<Blocker>(`${base}/blockers/${blockerId}`, { method: 'PATCH', body }),
+    mutationFn: async () => {
+      await Promise.all([
+        upsertSignal(base, row.id, surveySignal, 'SURVEY', survey, null),
+        upsertSignal(base, row.id, doraSignal, 'DORA', quant, evidence),
+        upsertSignal(base, row.id, themeSignal, 'THEME', openText, themeSignal?.evidenceDescription ?? null),
+      ]);
+      await api<Blocker>(`${base}/blockers/${row.id}`, {
+        method: 'PATCH',
+        body: {
+          severity: severityFromSources(confirmedCount),
+          evidenceSummary: evidence.trim() || null,
+          aiFit: confirmedCount >= 2 ? 'CANDIDATE' : 'INVESTIGATE',
+        },
+      });
+    },
     onSuccess: invalidate,
   });
-  const del = useMutation({
-    mutationFn: () => api(`${base}/blockers/${blockerId}`, { method: 'DELETE' }),
-    onSuccess: onDeleted,
-  });
-  const addSignal = useMutation({
-    mutationFn: (body: Partial<Signal> & { signalType: SignalType; signalName: string }) =>
-      api<Signal>(`${base}/blockers/${blockerId}/signals`, {
-        method: 'POST',
-        body,
-      }),
+  const remove = useMutation({
+    mutationFn: () => api(`${base}/blockers/${row.id}`, { method: 'DELETE' }),
     onSuccess: invalidate,
   });
-  const updateSignal = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<Signal> }) =>
-      api<Signal>(`${base}/signals/${id}`, { method: 'PATCH', body }),
-    onSuccess: invalidate,
-  });
-  const delSignal = useMutation({
-    mutationFn: (id: string) => api(`${base}/signals/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
-  });
-
-  if (!blocker) return <div className="text-sm text-slate-500">Loading blocker…</div>;
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <input
-            value={blocker.title}
-            onChange={(e) => update.mutate({ title: e.target.value })}
-            className="flex-1 font-semibold text-lg border-b border-transparent hover:border-slate-300 focus:border-slate-500 focus:outline-none"
-          />
-          <button
-            onClick={() => {
-              if (confirm(`Delete blocker "${blocker.title}"?`)) del.mutate();
-            }}
-            className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50"
-          >
-            Delete
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <Select
-            label="Severity"
-            value={blocker.severity}
-            options={['P1', 'P2', 'P3', 'P4']}
-            onChange={(v) => update.mutate({ severity: v as Severity })}
-            badgeClass={SEV_COLORS[blocker.severity]}
-          />
-          <Select
-            label="Status"
-            value={blocker.status}
-            options={['OPEN', 'IN_PROGRESS', 'RESOLVED', 'DROPPED']}
-            onChange={(v) => update.mutate({ status: v as BlockerStatus })}
-          />
-          <Select
-            label="AI fit"
-            value={blocker.aiFit}
-            options={['INVESTIGATE', 'CANDIDATE', 'STRONG_FIT', 'NOT_FIT']}
-            onChange={(v) => update.mutate({ aiFit: v as AIFit })}
-            badgeClass={AI_FIT_COLORS[blocker.aiFit]}
-          />
-          <Select
-            label="Source"
-            value={blocker.sourcePhase ?? 'MANUAL'}
-            options={['QUANTITATIVE', 'OPEN_TEXT', 'JOURNEY', 'TRIANGULATION', 'MANUAL']}
-            onChange={(v) => update.mutate({ sourcePhase: v })}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-          <NumberField
-            label="Reach %"
-            value={blocker.reachPercentage}
-            onSave={(v) => update.mutate({ reachPercentage: v })}
-          />
-          <NumberField
-            label="Hours lost / wk"
-            value={blocker.estimatedHoursLost}
-            onSave={(v) => update.mutate({ estimatedHoursLost: v })}
-          />
-          <TextField
-            label="Affected teams"
-            value={blocker.affectedTeams}
-            onSave={(v) => update.mutate({ affectedTeams: v })}
-          />
-        </div>
-
-        <TextareaField
-          label="Evidence summary"
-          value={blocker.evidenceSummary}
-          onSave={(v) => update.mutate({ evidenceSummary: v })}
+    <tr className="align-top odd:bg-[#fffaf0] even:bg-[#f8f0df]">
+      <td className="px-4 py-4">
+        <div className="font-semibold text-stone-950">{row.title}</div>
+        {row.description && <div className="mt-1 text-xs text-stone-500">{row.description}</div>}
+      </td>
+      <td className="px-4 py-4">
+        <ScoreSelect value={survey} onChange={setSurvey} />
+      </td>
+      <td className="px-4 py-4">
+        <ScoreSelect value={quant} onChange={setQuant} />
+      </td>
+      <td className="px-4 py-4">
+        <ScoreSelect value={openText} onChange={setOpenText} />
+      </td>
+      <td className="px-4 py-4">
+        <span className={sourceBadgeClass(confirmedCount)}>{confirmedCount}/3</span>
+      </td>
+      <td className="px-4 py-4">
+        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-bold text-stone-700">
+          {severityFromSources(confirmedCount)}
+        </span>
+      </td>
+      <td className="px-4 py-4">
+        <textarea
+          value={evidence}
+          onChange={(event) => setEvidence(event.target.value)}
+          rows={2}
+          className="min-w-[260px] rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+          placeholder="Specific metric value or triangulation evidence"
         />
-        <TextareaField
-          label="Description"
-          value={blocker.description}
-          onSave={(v) => update.mutate({ description: v })}
-        />
-      </div>
-
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h4 className="font-semibold text-sm mb-3">
-          Validation signals ({signals.data?.items.length ?? 0})
-        </h4>
-        <SignalCreateForm onAdd={(b) => addSignal.mutate(b)} pending={addSignal.isPending} />
-        {signals.isLoading ? (
-          <div className="text-sm text-slate-500">Loading…</div>
-        ) : (signals.data?.items.length ?? 0) === 0 ? (
-          <div className="text-sm text-slate-500">No signals attached yet.</div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {signals.data!.items.map((s) => (
-              <li key={s.id} className="py-3 text-sm flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={s.confirmed}
-                  onChange={(e) =>
-                    updateSignal.mutate({ id: s.id, body: { confirmed: e.target.checked } })
-                  }
-                  className="mt-1"
-                  title="Confirmed"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase font-semibold bg-slate-200 text-slate-700 rounded px-1.5 py-0.5">
-                      {s.signalType}
-                    </span>
-                    <span className="font-medium">{s.signalName}</span>
-                    {s.evidenceValue && (
-                      <span className="text-xs text-slate-500">→ {s.evidenceValue}</span>
-                    )}
-                  </div>
-                  {s.evidenceDescription && (
-                    <p className="text-xs text-slate-600 mt-1">{s.evidenceDescription}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => delSignal.mutate(s.id)}
-                  className="text-xs px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-50"
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+      </td>
+      <td className="px-4 py-4">
+        <button
+          type="button"
+          onClick={() => update.mutate()}
+          disabled={update.isPending}
+          className="rounded-md bg-[#171411] px-3 py-2 text-xs font-bold text-white hover:bg-black disabled:opacity-60"
+        >
+          {update.isPending ? 'Saving...' : 'Save'}
+        </button>
+      </td>
+      <td className="px-4 py-4">
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm(`Delete matrix row "${row.title}"?`)) remove.mutate();
+          }}
+          disabled={remove.isPending}
+          className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-60"
+        >
+          {remove.isPending ? 'Deleting...' : 'Delete'}
+        </button>
+      </td>
+    </tr>
   );
 }
 
-function SignalCreateForm({
-  onAdd,
+interface NewBlockerPayload {
+  title: string;
+  description: string;
+  survey: ScoreValue;
+  quant: ScoreValue;
+  openText: ScoreValue;
+  quantEvidence: string;
+  openTextEvidence: string;
+}
+
+function NewBlockerForm({
+  currentDoraSummary,
   pending,
+  onSubmit,
 }: {
-  onAdd: (b: { signalType: SignalType; signalName: string; evidenceValue: string | null }) => void;
+  currentDoraSummary: string;
   pending: boolean;
+  onSubmit: (payload: NewBlockerPayload) => void;
 }) {
-  const [type, setType] = useState<SignalType>('SURVEY');
-  const [name, setName] = useState('');
-  const [value, setValue] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [survey, setSurvey] = useState<ScoreValue>('CONFIRMED');
+  const [quant, setQuant] = useState<ScoreValue>('CONFIRMED');
+  const [openText, setOpenText] = useState<ScoreValue>('CONFIRMED');
+  const [quantEvidence, setQuantEvidence] = useState('');
+  const [openTextEvidence, setOpenTextEvidence] = useState('');
+
   return (
     <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-        onAdd({
-          signalType: type,
-          signalName: name.trim(),
-          evidenceValue: value.trim() || null,
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!title.trim()) return;
+        onSubmit({
+          title: title.trim(),
+          description: description.trim(),
+          survey,
+          quant,
+          openText,
+          quantEvidence: quantEvidence.trim(),
+          openTextEvidence: openTextEvidence.trim(),
         });
-        setName('');
-        setValue('');
+        setTitle('');
+        setDescription('');
+        setQuantEvidence('');
+        setOpenTextEvidence('');
       }}
-      className="flex flex-wrap gap-2 mb-4"
+      className="rounded-lg border border-stone-200 bg-[#fbf8f1] p-5 shadow-md shadow-stone-900/10"
     >
-      <select
-        value={type}
-        onChange={(e) => setType(e.target.value as SignalType)}
-        className="border border-slate-300 rounded px-2 py-1 text-sm"
-      >
-        {['SURVEY', 'THEME', 'JOURNEY_MAP', 'DORA', 'PR', 'CICD', 'IDE', 'INCIDENT', 'CALENDAR', 'SLACK', 'OTHER'].map((t) => (
-          <option key={t} value={t}>{t}</option>
-        ))}
-      </select>
-      <input
-        placeholder="Signal name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="flex-1 min-w-[180px] border border-slate-300 rounded px-2 py-1 text-sm"
-      />
-      <input
-        placeholder="Evidence value (e.g. 12.7m)"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-44 border border-slate-300 rounded px-2 py-1 text-sm"
-      />
+      <div className="mb-5 flex flex-wrap items-center gap-3 border-b border-stone-300 pb-4">
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+          New Row
+        </span>
+        <h3 className="font-semibold text-stone-950">Add Blocker to Triangulation Matrix</h3>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-4">
+        <label className="lg:col-span-1">
+          <FormLabel required>Blocker Name</FormLabel>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="e.g. Build pipeline failures and flaky tests"
+            className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+          />
+        </label>
+        <label>
+          <FormLabel>Survey Signal Confirmed?</FormLabel>
+          <ScoreSelect value={survey} onChange={setSurvey} />
+        </label>
+        <label>
+          <FormLabel>Quant Data Confirmed?</FormLabel>
+          <ScoreSelect value={quant} onChange={setQuant} />
+        </label>
+        <label>
+          <FormLabel>Open Text Confirmed?</FormLabel>
+          <ScoreSelect value={openText} onChange={setOpenText} confirmedLabel="Confirmed (>=30%)" />
+        </label>
+      </div>
+      <label className="mt-4 block">
+        <FormLabel>Quantitative Evidence (Specific Metric Value)</FormLabel>
+        <input
+          value={quantEvidence}
+          onChange={(event) => setQuantEvidence(event.target.value)}
+          placeholder={currentDoraSummary || 'e.g. Avg build time 38 min; flaky test rate 22% of runs'}
+          className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+        />
+      </label>
+      <label className="mt-4 block">
+        <FormLabel>Open Text Evidence</FormLabel>
+        <input
+          value={openTextEvidence}
+          onChange={(event) => setOpenTextEvidence(event.target.value)}
+          placeholder="e.g. Theme appeared in 35% of Phase 2 responses"
+          className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+        />
+      </label>
+      <label className="mt-4 block">
+        <FormLabel>Notes</FormLabel>
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={2}
+          placeholder="Optional context for reporting and subsequent phases"
+          className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+        />
+      </label>
       <button
-        disabled={pending}
-        className="text-xs px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+        type="submit"
+        disabled={pending || !title.trim()}
+        className="mt-4 rounded-md bg-[#171411] px-5 py-3 text-sm font-bold text-white shadow-md shadow-stone-900/15 hover:bg-black disabled:opacity-60"
       >
-        + Signal
+        {pending ? 'Adding...' : '+ Add to Matrix'}
       </button>
     </form>
   );
 }
 
-function Select({
-  label,
+function FormLabel({ children, required = false }: { children: ReactNode; required?: boolean }) {
+  return (
+    <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.18em] text-stone-700">
+      {children} {required && <span className="text-[#d83b78]">*</span>}
+    </span>
+  );
+}
+
+function ScoreSelect({
   value,
-  options,
   onChange,
-  badgeClass,
+  confirmedLabel,
 }: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (v: string) => void;
-  badgeClass?: string;
+  value: ScoreValue;
+  onChange: (value: ScoreValue) => void;
+  confirmedLabel?: string;
 }) {
   return (
-    <label>
-      <span className="block text-[10px] uppercase font-semibold text-slate-600 mb-1">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full text-sm border rounded px-2 py-1 ${badgeClass ?? 'border-slate-300'}`}
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>
-        ))}
-      </select>
-    </label>
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value as ScoreValue)}
+      className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+    >
+      {SCORE_OPTIONS.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.value === 'CONFIRMED' && confirmedLabel ? confirmedLabel : option.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
-function NumberField({
-  label,
-  value,
-  onSave,
-}: {
-  label: string;
-  value: number | null;
-  onSave: (v: number | null) => void;
-}) {
-  const [draft, setDraft] = useState<string>(value?.toString() ?? '');
-  useEffect(() => setDraft(value?.toString() ?? ''), [value]);
-  return (
-    <label>
-      <span className="block text-[10px] uppercase font-semibold text-slate-600 mb-1">
-        {label}
-      </span>
-      <input
-        type="number"
-        min={0}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          const n = draft === '' ? null : Number(draft);
-          if (n !== value) onSave(n);
-        }}
-        className="w-full text-sm border border-slate-300 rounded px-2 py-1"
-      />
-    </label>
-  );
+function normalizeMetrics(metrics: DoraMetrics): DoraMetrics {
+  return Object.fromEntries(
+    DORA_FIELDS.map((field) => {
+      const value = metrics[field.key];
+      return [field.key, value && value.trim() ? value.trim() : null];
+    }),
+  ) as unknown as DoraMetrics;
 }
 
-function TextField({
-  label,
-  value,
-  onSave,
-}: {
-  label: string;
-  value: string | null;
-  onSave: (v: string | null) => void;
-}) {
-  const [draft, setDraft] = useState<string>(value ?? '');
-  useEffect(() => setDraft(value ?? ''), [value]);
-  return (
-    <label>
-      <span className="block text-[10px] uppercase font-semibold text-slate-600 mb-1">
-        {label}
-      </span>
-      <input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          const v = draft.trim() === '' ? null : draft;
-          if (v !== value) onSave(v);
-        }}
-        className="w-full text-sm border border-slate-300 rounded px-2 py-1"
-      />
-    </label>
-  );
+function buildDoraSummary(metrics: DoraMetrics): string {
+  const normalized = normalizeMetrics(metrics);
+  return DORA_FIELDS
+    .map((field) => {
+      const value = normalized[field.key];
+      return value ? `${field.label}: ${value}` : null;
+    })
+    .filter(Boolean)
+    .join('; ');
 }
 
-function TextareaField({
-  label,
-  value,
-  onSave,
-}: {
-  label: string;
-  value: string | null;
-  onSave: (v: string | null) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value ?? '');
-  useEffect(() => {
-    if (!editing) setDraft(value ?? '');
-  }, [value, editing]);
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          {label}
-        </span>
-        <button
-          onClick={() => setEditing((v) => !v)}
-          className="text-xs text-slate-500 hover:text-slate-800"
-        >
-          {editing ? 'Cancel' : value ? 'Edit' : 'Add'}
-        </button>
-      </div>
-      {editing ? (
-        <div className="space-y-2">
-          <textarea
-            rows={3}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-          />
-          <button
-            onClick={() => {
-              onSave(draft.trim() === '' ? null : draft);
-              setEditing(false);
-            }}
-            className="text-xs px-3 py-1 rounded bg-slate-900 text-white hover:bg-slate-800"
-          >
-            Save
-          </button>
-        </div>
-      ) : value ? (
-        <p className="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded p-3">
-          {value}
-        </p>
-      ) : (
-        <p className="text-xs text-slate-400 italic">— not set —</p>
-      )}
-    </div>
-  );
+function findSignal(row: MatrixBlocker, signalType: SignalType): Signal | undefined {
+  return row.signals.find((signal) => signal.signalType === signalType);
 }
 
-// ─── Auto-seed validated blockers from survey signals ─────────────────
-function AutoSeedBanner({ base, onSeeded }: { base: string; onSeeded: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [last, setLast] = useState<{ created: number; totalRespondents: number } | null>(null);
-  const run = async () => {
-    if (!confirm('Auto-seed validated blockers from low survey dimensions, promoted themes and red journey steps? Existing blockers with matching titles are skipped.')) return;
-    setBusy(true);
-    try {
-      const r = await api<{ created: number; totalRespondents: number; blockers: { title: string; severity: string }[] }>(
-        `${base}/auto-seed`,
-        { method: 'POST', body: {} },
-      );
-      setLast({ created: r.created, totalRespondents: r.totalRespondents });
-      onSeeded();
-    } catch (e: any) {
-      alert(e?.message ?? 'Auto-seed failed');
-    } finally { setBusy(false); }
+function scoreFromSignal(signal: Signal | undefined): ScoreValue {
+  if (!signal) return 'NOT_CONFIRMED';
+  if (signal.confirmed) return 'CONFIRMED';
+  if (signal.evidenceValue === 'Partial / needs follow-up') return 'PARTIAL';
+  return 'NOT_CONFIRMED';
+}
+
+function countConfirmed(...values: ScoreValue[]): number {
+  return values.filter((value) => value === 'CONFIRMED').length;
+}
+
+function severityFromSources(sourceCount: number): Severity {
+  if (sourceCount >= 3) return 'P1';
+  if (sourceCount === 2) return 'P2';
+  if (sourceCount === 1) return 'P3';
+  return 'P4';
+}
+
+function signalBody(type: SignalType, score: ScoreValue, evidence: string | null) {
+  return {
+    signalType: type,
+    signalName: SIGNAL_COPY[type].name,
+    evidenceValue: scoreLabel(score),
+    evidenceDescription: evidence,
+    confirmed: score === 'CONFIRMED',
   };
-  return (
-    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-center justify-between gap-4">
-      <div>
-        <div className="font-semibold text-sm text-emerald-900">Triangulate survey signals into blockers</div>
-        <div className="text-xs text-emerald-700 mt-0.5">
-          Pulls low-scoring dimensions, promoted themes and red journey steps and creates a Validated Blocker with linked signals for each.
-          {last && <span className="ml-2 font-medium">Last run: {last.created} new blockers from {last.totalRespondents} respondents.</span>}
-        </div>
-      </div>
-      <button
-        onClick={run}
-        disabled={busy}
-        className="text-sm px-4 py-2 rounded bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50 whitespace-nowrap"
-      >
-        {busy ? 'Seeding…' : '✨ Auto-seed blockers'}
-      </button>
-    </div>
-  );
+}
+
+async function upsertSignal(
+  base: string,
+  blockerId: string,
+  existing: Signal | undefined,
+  type: SignalType,
+  score: ScoreValue,
+  evidence: string | null,
+) {
+  const body = signalBody(type, score, evidence?.trim() || null);
+  if (existing) {
+    return api<Signal>(`${base}/signals/${existing.id}`, { method: 'PATCH', body });
+  }
+  return api<Signal>(`${base}/blockers/${blockerId}/signals`, { method: 'POST', body });
+}
+
+function scoreLabel(score: ScoreValue): string {
+  return SCORE_OPTIONS.find((option) => option.value === score)?.label ?? score;
+}
+
+function sourceBadgeClass(count: number): string {
+  const base = 'rounded-full px-2.5 py-1 text-xs font-bold';
+  if (count >= 3) return `${base} bg-emerald-100 text-emerald-800`;
+  if (count === 2) return `${base} bg-amber-100 text-amber-800`;
+  return `${base} bg-stone-100 text-stone-600`;
 }

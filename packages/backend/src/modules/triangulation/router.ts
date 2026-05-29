@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 import {
   BlockerCreateSchema,
   BlockerUpdateSchema,
@@ -14,6 +14,42 @@ import { assertCompanyAccess, requireAuth, requireRole } from '../auth/middlewar
 export const triangulationRouter = Router({ mergeParams: true });
 triangulationRouter.use(requireAuth);
 
+const doraMetricKeys = [
+  'leadTimeForChanges',
+  'deploymentFrequency',
+  'mttr',
+  'changeFailureRate',
+  'avgBuildTimeMinutes',
+  'flakyTestFailureRate',
+  'prAvgReviewIterations',
+  'prFirstReviewLagHours',
+  'ideAvgActiveSessionLengthMinutes',
+] as const;
+
+const DoraMetricsSchema = z.object(
+  Object.fromEntries(
+    doraMetricKeys.map((key) => [key, z.string().max(500).nullable().optional()]),
+  ) as Record<(typeof doraMetricKeys)[number], z.ZodOptional<z.ZodNullable<z.ZodString>>>,
+);
+
+type DoraMetrics = z.infer<typeof DoraMetricsSchema>;
+type DoraCycle = 'current' | 'previous';
+
+const emptyDoraMetrics = (): DoraMetrics =>
+  Object.fromEntries(doraMetricKeys.map((key) => [key, null])) as DoraMetrics;
+
+const doraSignalName = (cycle: DoraCycle) =>
+  cycle === 'current' ? 'DORA_CURRENT_CYCLE' : 'DORA_PREVIOUS_CYCLE';
+
+function parseDoraMetrics(raw: string | null): DoraMetrics {
+  if (!raw) return emptyDoraMetrics();
+  try {
+    return { ...emptyDoraMetrics(), ...DoraMetricsSchema.parse(JSON.parse(raw)) };
+  } catch {
+    return emptyDoraMetrics();
+  }
+}
+
 function handleZod(err: ZodError): HttpError {
   return new HttpError(400, 'Invalid request body', err.issues);
 }
@@ -25,6 +61,120 @@ async function loadCampaign(companyId: string, campaignId: string) {
 }
 
 // ─── Blockers ──────────────────────────────────────────────────────────
+triangulationRouter.get('/dora-metrics', async (req, res, next) => {
+  try {
+    const { companyId, campaignId } = req.params as {
+      companyId: string;
+      campaignId: string;
+    };
+    assertCompanyAccess(req.auth, companyId);
+    await loadCampaign(companyId, campaignId);
+
+    const signals = await prisma.validationSignal.findMany({
+      where: {
+        campaignId,
+        blockerId: null,
+        signalType: 'DORA',
+        signalName: { in: [doraSignalName('current'), doraSignalName('previous')] },
+      },
+    });
+
+    const current = signals.find((s) => s.signalName === doraSignalName('current'));
+    const previous = signals.find((s) => s.signalName === doraSignalName('previous'));
+    res.json({
+      current: parseDoraMetrics(current?.evidenceDescription ?? null),
+      previous: parseDoraMetrics(previous?.evidenceDescription ?? null),
+      updatedAt: {
+        current: current?.createdAt ?? null,
+        previous: previous?.createdAt ?? null,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+triangulationRouter.put(
+  '/dora-metrics/:cycle',
+  requireRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'ANALYST'),
+  async (req, res, next) => {
+    try {
+      const { companyId, campaignId, cycle } = req.params as {
+        companyId: string;
+        campaignId: string;
+        cycle: string;
+      };
+      if (cycle !== 'current' && cycle !== 'previous') {
+        throw new HttpError(400, 'Cycle must be current or previous');
+      }
+      assertCompanyAccess(req.auth, companyId);
+      await loadCampaign(companyId, campaignId);
+
+      const body = DoraMetricsSchema.parse(req.body);
+      const data = { ...emptyDoraMetrics(), ...body };
+      const filledValues = Object.values(data).filter(Boolean).length;
+      const signalName = doraSignalName(cycle);
+      const existing = await prisma.validationSignal.findFirst({
+        where: { campaignId, blockerId: null, signalType: 'DORA', signalName },
+      });
+
+      const saved = existing
+        ? await prisma.validationSignal.update({
+            where: { id: existing.id },
+            data: {
+              evidenceValue: `${filledValues} metrics captured`,
+              evidenceDescription: JSON.stringify(data),
+              confirmed: filledValues > 0,
+            },
+          })
+        : await prisma.validationSignal.create({
+            data: {
+              campaignId,
+              blockerId: null,
+              signalType: 'DORA',
+              signalName,
+              evidenceValue: `${filledValues} metrics captured`,
+              evidenceDescription: JSON.stringify(data),
+              confirmed: filledValues > 0,
+            },
+          });
+
+      recordAudit(req, 'triangulation.doraMetrics.save', 'ValidationSignal', saved.id, {
+        cycle,
+        filledValues,
+      });
+      res.json({ cycle, metrics: data, updatedAt: saved.createdAt });
+    } catch (e) {
+      if (e instanceof ZodError) return next(handleZod(e));
+      next(e);
+    }
+  },
+);
+
+triangulationRouter.get('/matrix', async (req, res, next) => {
+  try {
+    const { companyId, campaignId } = req.params as {
+      companyId: string;
+      campaignId: string;
+    };
+    assertCompanyAccess(req.auth, companyId);
+    await loadCampaign(companyId, campaignId);
+    const items = await prisma.blocker.findMany({
+      where: { campaignId },
+      orderBy: [{ severity: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        signals: {
+          where: { signalType: { in: ['SURVEY', 'DORA', 'THEME'] } },
+          orderBy: [{ signalType: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+    });
+    res.json({ items });
+  } catch (e) {
+    next(e);
+  }
+});
+
 triangulationRouter.get('/blockers', async (req, res, next) => {
   try {
     const { companyId, campaignId } = req.params as {

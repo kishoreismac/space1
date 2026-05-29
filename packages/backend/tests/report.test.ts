@@ -68,7 +68,7 @@ beforeAll(async () => {
   await request(app)
     .post(`/api/companies/${companyId}/campaigns/${campaignId}/themes`)
     .set('authorization', `Bearer ${token}`)
-    .send({ themeName: 'Slow CI', jtbdStatement: 'When my PR is open, I want fast CI…' });
+    .send({ themeName: 'Open-ended efficiency blocker', jtbdStatement: 'When my PR is open, I want fast CI…' });
 
   // One journey session + 1 RED step
   const sess = await request(app)
@@ -160,7 +160,7 @@ describe('executive report', () => {
 
     // Themes
     expect(r.body.themes).toHaveLength(1);
-    expect(r.body.themes[0].themeName).toBe('Slow CI');
+    expect(r.body.themes[0].themeName).toBe('Open-ended efficiency blocker');
 
     // Journey
     expect(r.body.journey.sessionCount).toBe(1);

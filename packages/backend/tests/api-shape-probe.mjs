@@ -1,0 +1,61 @@
+import 'dotenv/config';
+
+const endpoint = (process.env.AZURE_FOUNDRY_ENDPOINT ?? '').replace(/\/$/, '');
+const apiKey = process.env.AZURE_FOUNDRY_API_KEY ?? '';
+const deployment = process.env.AZURE_FOUNDRY_DEPLOYMENT ?? '';
+
+const openAiStyleVersions = ['2024-10-21', '2024-08-01-preview', '2024-06-01', '2025-04-14'];
+const foundryStyleVersions = ['v1', '2024-05-01-preview', '2024-10-01', '2024-02-15-preview'];
+
+if (!endpoint || !apiKey || !deployment) {
+  console.error('Missing endpoint/key/deployment in environment');
+  process.exit(2);
+}
+
+async function postJson(url, body) {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    return { status: res.status, ok: res.ok, body: text.replace(/\s+/g, ' ').slice(0, 220) };
+  } catch (err) {
+    return { status: 0, ok: false, body: String(err) };
+  }
+}
+
+for (const v of openAiStyleVersions) {
+  const url = `${endpoint}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${encodeURIComponent(v)}`;
+  // eslint-disable-next-line no-await-in-loop
+  const r = await postJson(url, {
+    messages: [
+      { role: 'system', content: 'Return JSON {"ok":true} only.' },
+      { role: 'user', content: 'ping' },
+    ],
+    temperature: 0,
+    max_tokens: 20,
+    response_format: { type: 'json_object' },
+  });
+  console.log(`OPENAI_STYLE\t${v}\t${r.status}\t${r.ok ? 'OK' : 'FAIL'}\t${r.body}`);
+}
+
+for (const v of foundryStyleVersions) {
+  const url = `${endpoint}/models/chat/completions?api-version=${encodeURIComponent(v)}`;
+  // eslint-disable-next-line no-await-in-loop
+  const r = await postJson(url, {
+    model: deployment,
+    messages: [
+      { role: 'system', content: 'Return JSON {"ok":true} only.' },
+      { role: 'user', content: 'ping' },
+    ],
+    temperature: 0,
+    max_tokens: 20,
+    response_format: { type: 'json_object' },
+  });
+  console.log(`FOUNDRY_STYLE\t${v}\t${r.status}\t${r.ok ? 'OK' : 'FAIL'}\t${r.body}`);
+}

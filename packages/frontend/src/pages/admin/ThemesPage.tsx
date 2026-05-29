@@ -140,6 +140,7 @@ export default function ThemesPage() {
               num="1"
               title="Read & Analyse Results"
               subtitle="Review detected themes and run automatic analysis"
+              defaultOpen
             >
               {analyseResults.isError && (
                 <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -303,9 +304,9 @@ function ThemesWorkspace({
 
   const create = useMutation({
     mutationFn: (body: Partial<Theme>) => api<Theme>(base, { method: 'POST', body }),
-    onSuccess: (theme) => {
+    onSuccess: (t) => {
       qc.invalidateQueries({ queryKey: ['themes', campaignId] });
-      setSelectedThemeId(theme.id);
+      setSelectedThemeId(t.id);
       setShowCreate(false);
     },
   });
@@ -336,7 +337,7 @@ function ThemesWorkspace({
           <ThemeCreateForm
             pending={create.isPending}
             error={create.error?.message}
-            onSubmit={(body) => create.mutate(body)}
+            onSubmit={(b) => create.mutate(b)}
           />
         )}
 

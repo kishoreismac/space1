@@ -1,14 +1,16 @@
 import { Router } from 'express';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 import {
   ThemeCreateSchema,
   ThemeTagRequestSchema,
   ThemeUpdateSchema,
 } from '@space/shared';
+import { config } from '../../config/env.js';
 import { HttpError } from '../../middleware/error.js';
 import { prisma } from '../../prisma/client.js';
 import { recordAudit } from '../../lib/audit.js';
 import { assertCompanyAccess, requireAuth, requireRole } from '../auth/middleware.js';
+import { classifyOpenTextAnswersWithFoundry, FoundryError } from './ai.js';
 import { clusterAnswers } from './cluster.js';
 
 export const themesRouter = Router({ mergeParams: true });
@@ -26,6 +28,23 @@ async function loadCampaign(companyId: string, campaignId: string) {
 
 async function totalCompletedRespondents(campaignId: string): Promise<number> {
   return prisma.submission.count({ where: { campaignId, status: 'COMPLETED' } });
+}
+
+const ThemeAiAnalyzeSchema = z.object({
+  replaceExisting: z.boolean().default(true),
+  minimumConfidence: z.number().min(0).max(1).default(0.5),
+});
+
+function normalizeText(value: string | null | undefined, maxLen: number): string | null {
+  const text = (value ?? '').trim();
+  if (!text) return null;
+  return text.length > maxLen ? `${text.slice(0, maxLen - 3)}...` : text;
+}
+
+function statusFromPercentage(percentage: number): 'PROMOTE' | 'INVESTIGATE' | 'MONITOR' {
+  if (percentage >= 30) return 'PROMOTE';
+  if (percentage >= 15) return 'INVESTIGATE';
+  return 'MONITOR';
 }
 
 /** Recompute respondentCount/percentage for a theme using its current tags. */
@@ -115,6 +134,207 @@ themesRouter.get('/:themeId/tags', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ─── AI analyze open-text answers into themes (Phase 2) ───────────────
+themesRouter.post(
+  '/ai-analyze',
+  requireRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'ANALYST'),
+  async (req, res, next) => {
+    try {
+      const { companyId, campaignId } = req.params as { companyId: string; campaignId: string };
+      assertCompanyAccess(req.auth, companyId);
+
+      const foundry = config.foundry;
+      if (!foundry.endpoint || !foundry.apiKey || !foundry.deployment) {
+        throw new HttpError(
+          503,
+          'Azure Foundry is not configured. Set AZURE_FOUNDRY_ENDPOINT, AZURE_FOUNDRY_API_KEY, and AZURE_FOUNDRY_DEPLOYMENT.',
+        );
+      }
+
+      const body = ThemeAiAnalyzeSchema.parse(req.body ?? {});
+      const campaign = await loadCampaign(companyId, campaignId);
+
+      const openTextAnswers = await prisma.answer.findMany({
+        where: {
+          submission: { campaignId, status: 'COMPLETED' },
+          question: {
+            questionnaireId: campaign.questionnaireId,
+            questionType: 'OPEN_TEXT',
+          },
+          NOT: { textValue: null },
+        },
+        select: {
+          id: true,
+          textValue: true,
+          submissionId: true,
+          question: {
+            select: {
+              id: true,
+              questionNumber: true,
+            },
+          },
+        },
+      });
+
+      const answerInputs = openTextAnswers
+        .map((a) => ({
+          answerId: a.id,
+          questionNumber: a.question.questionNumber,
+          text: (a.textValue ?? '').trim(),
+        }))
+        .filter((a) => a.text.length > 0);
+
+      if (answerInputs.length === 0) {
+        return res.json({
+          createdCount: 0,
+          tagCount: 0,
+          items: [],
+          note: 'No open-text answers available for analysis.',
+        });
+      }
+
+      const questionnaireThemesRaw = await prisma.question.findMany({
+        where: {
+          questionnaireId: campaign.questionnaireId,
+          NOT: { blockerSignal: null },
+        },
+        select: {
+          id: true,
+          blockerSignal: true,
+        },
+      });
+      const questionnaireThemes = Array.from(
+        new Set(
+          questionnaireThemesRaw
+            .map((q) => (q.blockerSignal ?? '').trim())
+            .filter((s) => s.length > 0),
+        ),
+      );
+      if (questionnaireThemes.length === 0) {
+        throw new HttpError(400, 'No predefined questionnaire themes found (blockerSignal).');
+      }
+
+      const modelMatches = await classifyOpenTextAnswersWithFoundry(
+        {
+          endpoint: foundry.endpoint,
+          apiKey: foundry.apiKey,
+          deployment: foundry.deployment,
+          apiVersion: foundry.apiVersion,
+        },
+        answerInputs,
+        questionnaireThemes,
+        body.minimumConfidence,
+      );
+
+      if (body.replaceExisting) {
+        await prisma.openTextThemeTag.deleteMany({ where: { theme: { campaignId } } });
+        await prisma.openTextTheme.deleteMany({ where: { campaignId } });
+      }
+
+      const signalQuestionMap = new Map<string, string>();
+      for (const q of questionnaireThemesRaw) {
+        const signal = (q.blockerSignal ?? '').trim();
+        if (!signal) continue;
+        if (!signalQuestionMap.has(signal)) signalQuestionMap.set(signal, q.id);
+      }
+
+      const themeIdByName = new Map<string, string>();
+      let createdCount = 0;
+      for (const themeName of questionnaireThemes) {
+        const existing = await prisma.openTextTheme.findFirst({
+          where: { campaignId, themeName },
+          select: { id: true },
+        });
+        if (existing) {
+          themeIdByName.set(themeName, existing.id);
+          continue;
+        }
+        const created = await prisma.openTextTheme.create({
+          data: {
+            campaignId,
+            themeName,
+            sourceQuestionId: signalQuestionMap.get(themeName) ?? null,
+            respondentCount: 0,
+            percentage: 0,
+            status: 'MONITOR',
+          },
+        });
+        themeIdByName.set(themeName, created.id);
+        createdCount += 1;
+      }
+
+      let tagCount = 0;
+      const touchedThemeIds = new Set<string>();
+      for (const m of modelMatches) {
+        const themeId = themeIdByName.get(m.matchedThemeName);
+        if (!themeId) continue;
+        await prisma.openTextThemeTag.upsert({
+          where: { themeId_answerId: { themeId, answerId: m.answerId } },
+          create: { themeId, answerId: m.answerId },
+          update: {},
+        });
+        tagCount += 1;
+        touchedThemeIds.add(themeId);
+      }
+
+      for (const themeId of themeIdByName.values()) {
+        await recomputeStats(themeId);
+      }
+
+      const updatedThemes = await prisma.openTextTheme.findMany({
+        where: { campaignId, themeName: { in: questionnaireThemes } },
+        select: {
+          id: true,
+          themeName: true,
+          respondentCount: true,
+          percentage: true,
+          status: true,
+        },
+      });
+
+      for (const t of updatedThemes) {
+        const status = statusFromPercentage(t.percentage);
+        if (t.status !== status) {
+          await prisma.openTextTheme.update({
+            where: { id: t.id },
+            data: { status },
+          });
+          t.status = status;
+        }
+      }
+
+      const items: Array<{
+        id: string;
+        themeName: string;
+        status: string;
+        respondentCount: number;
+        percentage: number;
+        tagCount: number;
+      }> = updatedThemes
+        .filter((t) => touchedThemeIds.has(t.id) || t.respondentCount > 0)
+        .map((t) => ({
+          id: t.id,
+          themeName: t.themeName,
+          status: t.status,
+          respondentCount: t.respondentCount,
+          percentage: t.percentage,
+          tagCount: t.respondentCount,
+        }));
+
+      res.json({
+        createdCount,
+        tagCount,
+        items,
+        predefinedThemeCount: questionnaireThemes.length,
+      });
+    } catch (e) {
+      if (e instanceof ZodError) return next(handleZod(e));
+      if (e instanceof FoundryError) return next(new HttpError(e.status, e.message));
+      next(e);
+    }
+  },
+);
+
 // ─── Create / update / delete ──────────────────────────────────────────
 themesRouter.post(
   '/',
@@ -154,6 +374,7 @@ themesRouter.patch(
         themeId: string;
       };
       assertCompanyAccess(req.auth, companyId);
+      await loadCampaign(companyId, campaignId);
       const theme = await prisma.openTextTheme.findUnique({ where: { id: themeId } });
       if (!theme || theme.campaignId !== campaignId) {
         throw new HttpError(404, 'Theme not found');
