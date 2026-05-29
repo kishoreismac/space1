@@ -355,17 +355,40 @@ themesRouter.get('/:themeId/detail', async (req, res, next) => {
     // Group by question
     const byQuestion = new Map<
       string,
-      { questionId: string; questionNumber: number; questionText: string; respondents: Set<string>; answerCount: number }
+      {
+        questionId: string;
+        questionNumber: number;
+        questionText: string;
+        respondents: Set<string>;
+        answerCount: number;
+        answers: { answerId: string; text: string; roleLabel: string | null; submissionId: string }[];
+      }
     >();
     for (const t of tags) {
       const q = t.answer.question;
       let g = byQuestion.get(q.id);
       if (!g) {
-        g = { questionId: q.id, questionNumber: q.questionNumber, questionText: q.questionText, respondents: new Set(), answerCount: 0 };
+        g = {
+          questionId: q.id,
+          questionNumber: q.questionNumber,
+          questionText: q.questionText,
+          respondents: new Set(),
+          answerCount: 0,
+          answers: [],
+        };
         byQuestion.set(q.id, g);
       }
       g.respondents.add(t.answer.submission.id);
       g.answerCount += 1;
+      const txt = (t.answer.textValue ?? '').trim();
+      if (txt) {
+        g.answers.push({
+          answerId: t.answer.id,
+          text: txt,
+          roleLabel: t.answer.submission.roleLabel ?? null,
+          submissionId: t.answer.submission.id,
+        });
+      }
     }
 
     // Group respondents by role
@@ -396,6 +419,7 @@ themesRouter.get('/:themeId/detail', async (req, res, next) => {
           respondentCount: g.respondents.size,
           answerCount: g.answerCount,
           percentage: totalRespondents > 0 ? Math.round((g.respondents.size / totalRespondents) * 1000) / 10 : 0,
+          answers: g.answers,
         }))
         .sort((a, b) => b.respondentCount - a.respondentCount),
       roles: [...byRole.entries()]

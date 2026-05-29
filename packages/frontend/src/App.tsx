@@ -18,6 +18,7 @@ import QuestionsPage from './pages/admin/QuestionsPage';
 import BulkUploadPage from './pages/admin/BulkUploadPage';
 import PhasePlaceholder from './pages/admin/PhasePlaceholder';
 import SurveyLanding from './pages/survey/SurveyLanding';
+import SurveyJoin from './pages/survey/SurveyJoin';
 import LoginPage from './pages/auth/LoginPage';
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<PublicLayout />}>
+        <Route path="/survey/c/:campaignId" element={<SurveyJoin />} />
         <Route path="/survey/:token" element={<SurveyLanding />} />
       </Route>
 

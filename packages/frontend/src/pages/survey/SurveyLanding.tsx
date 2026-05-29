@@ -94,6 +94,8 @@ export default function SurveyLanding() {
   return <SurveyFlow token={token!} context={ctx.data} />;
 }
 
+export { SurveyFlow };
+
 function SurveyFlow({ token, context }: { token: string; context: PublicSurveyContext }) {
   const { questionnaire, campaign, company, teams, invite } = context;
 

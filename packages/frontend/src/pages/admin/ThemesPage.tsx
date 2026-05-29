@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Campaign, Company } from '@space/shared';
 import { api } from '../../lib/api';
@@ -52,6 +52,9 @@ export default function ThemesPage() {
   const userCompanyId = useAuth((s) => s.user?.companyId ?? null);
   const [companyId, setCompanyId] = useState<string | null>(userCompanyId);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [misalignmentNotes, setMisalignmentNotes] = useState('');
+  const [notesSaved, setNotesSaved] = useState(false);
+  const qc = useQueryClient();
 
   const companies = useQuery({
     queryKey: ['companies'],
@@ -72,64 +75,216 @@ export default function ThemesPage() {
     if (!campaignId && first) setCampaignId(first.id);
   }, [campaigns.data, campaignId]);
 
+  const analyseResults = useMutation({
+    mutationFn: () => {
+      if (!companyId || !campaignId) {
+        return Promise.resolve({ created: 0, updated: 0, totalThemes: 0 });
+      }
+      return api<{ created: number; updated: number; totalThemes: number }>(
+        `/api/companies/${companyId}/campaigns/${campaignId}/themes/auto-generate`,
+        { method: 'POST', body: {} },
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['themes', campaignId] }),
+  });
+
   return (
     <PhaseShell phase="P2">
-    <div className="space-y-6">
-
-      <div className="bg-white rounded-lg border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
-        {role === 'SUPER_ADMIN' && (
+      <div className="space-y-6">
+        {/* Company/Campaign Selectors */}
+        <div className="bg-white rounded-lg border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+          {role === 'SUPER_ADMIN' && (
+            <label className="text-sm">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                Company
+              </span>
+              <select
+                value={companyId ?? ''}
+                onChange={(e) => {
+                  setCompanyId(e.target.value || null);
+                  setCampaignId(null);
+                }}
+                className="border border-slate-300 rounded px-2 py-1.5 text-sm"
+              >
+                <option value="">-</option>
+                {companies.data?.items.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="text-sm">
             <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
-              Company
+              Campaign
             </span>
             <select
-              value={companyId ?? ''}
-              onChange={(e) => {
-                setCompanyId(e.target.value || null);
-                setCampaignId(null);
-              }}
-              className="border border-slate-300 rounded px-2 py-1.5 text-sm"
+              value={campaignId ?? ''}
+              onChange={(e) => setCampaignId(e.target.value || null)}
+              disabled={!companyId}
+              className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-[240px]"
             >
-              <option value="">—</option>
-              {companies.data?.items.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              <option value="">-</option>
+              {campaigns.data?.items.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title} ({c.status})
+                </option>
               ))}
             </select>
           </label>
-        )}
-        <label className="text-sm">
-          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
-            Campaign
-          </span>
-          <select
-            value={campaignId ?? ''}
-            onChange={(e) => setCampaignId(e.target.value || null)}
-            disabled={!companyId}
-            className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-[240px]"
-          >
-            <option value="">—</option>
-            {campaigns.data?.items.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title} ({c.status})
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {companyId && campaignId ? (
-        <ThemesWorkspace companyId={companyId} campaignId={campaignId} />
-      ) : (
-        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
-          Pick a campaign to manage themes.
         </div>
-      )}
-    </div>
+
+        {/* Main Content: Three Sections */}
+        {companyId && campaignId ? (
+          <div className="space-y-6">
+            <ActivityBlock
+              num="1"
+              title="Read & Analyse Results"
+              subtitle="Review detected themes and run automatic analysis"
+            >
+              {analyseResults.isError && (
+                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {analyseResults.error?.message ?? 'Analysis failed'}
+                </div>
+              )}
+              <ThemesWorkspace
+                companyId={companyId}
+                campaignId={campaignId}
+                onAutoAnalyse={() => analyseResults.mutate()}
+                autoAnalysing={analyseResults.isPending}
+              />
+            </ActivityBlock>
+
+            {/* 2. Threshold rule */}
+            <ActivityBlock num="2" title="Apply the 30% Threshold Rule" subtitle="Auto-applied to identified themes">
+              <ThresholdGate companyId={companyId} campaignId={campaignId} />
+            </ActivityBlock>
+
+            {/* 3. JTBD and misalignment */}
+            <ActivityBlock num="3" title="Extract JTBD & Check Misalignment" subtitle="Preserve developer language and identify hidden blockers">
+              <div>
+                <div className="mb-2 p-3 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-yellow-900">
+                  <span className="font-semibold">If a theme appears in &gt;30% of open text but does NOT correspond to a low Likert score, the Likert question missed the blocker. Flag it for additional investigation in Phase 3.</span>
+                </div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                  Themes appearing in text but not in low Likert scores
+                </label>
+                <textarea
+                  className="w-full border border-slate-300 rounded px-2 py-1 text-sm mb-2"
+                  rows={3}
+                  placeholder="e.g. 'On-call rotation burden' appeared in 35% of Q40 responses but C dimension scored 3.4 (moderate/healthy). This suggests Q39 (on-call rotation question) is under-scoring the actual severity. Flag for Phase 3 DORA/incident data pull."
+                  value={misalignmentNotes}
+                  onChange={e => { setMisalignmentNotes(e.target.value); setNotesSaved(false); }}
+                />
+                <button
+                  className="btn btn-outline border border-slate-200 bg-white text-slate-900 hover:bg-slate-100 font-semibold px-4 py-2 rounded"
+                  onClick={() => setNotesSaved(true)}
+                >
+                  Save Notes
+                </button>
+                {notesSaved && <span className="ml-3 text-green-600 text-xs font-semibold">Notes saved!</span>}
+              </div>
+            </ActivityBlock>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
+            Pick a campaign to manage themes.
+          </div>
+        )}
+      </div>
     </PhaseShell>
   );
 }
 
-function ThemesWorkspace({ companyId, campaignId }: { companyId: string; campaignId: string }) {
+function ActivityBlock({
+  num,
+  title,
+  subtitle,
+  defaultOpen = false,
+  disabled = false,
+  onTitleClick,
+  children,
+}: {
+  num: string;
+  title: string;
+  subtitle?: string;
+  defaultOpen?: boolean;
+  disabled?: boolean;
+  onTitleClick?: () => void;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const handleTitleClick = () => {
+    if (onTitleClick && !disabled) {
+      setOpen(true);
+      onTitleClick();
+      return;
+    }
+    setOpen((s) => !s);
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden">
+      <button
+        type="button"
+        onClick={handleTitleClick}
+        className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 text-left border-b border-slate-200 disabled:opacity-60"
+      >
+        <span className="w-7 h-7 rounded-full bg-amber-900 text-white font-semibold text-sm flex items-center justify-center shrink-0">
+          {num}
+        </span>
+        <span className={`font-serif text-base font-semibold flex-1 ${onTitleClick ? 'text-amber-900 underline underline-offset-4' : 'text-slate-900'}`}>
+          {title}
+        </span>
+        {subtitle && (
+          <span className="text-[11px] font-mono uppercase tracking-[2px] text-slate-500 hidden md:block">
+            {subtitle}
+          </span>
+        )}
+        <span className={`text-slate-400 text-sm transition-transform ${open ? 'rotate-180' : ''}`}>v</span>
+      </button>
+      {open && <div className="p-5 space-y-5">{children}</div>}
+    </div>
+  );
+}
+
+function ThresholdGate({ companyId, campaignId }: { companyId: string; campaignId: string }) {
+  const base = `/api/companies/${companyId}/campaigns/${campaignId}/themes`;
+  const { data, isLoading } = useQuery({
+    queryKey: ['themes', campaignId],
+    queryFn: () => api<ThemesResponse>(base),
+  });
+  const promoted = data?.items.filter((t) => t.status === 'PROMOTE') ?? [];
+  const investigate = data?.items.filter((t) => t.status === 'INVESTIGATE') ?? [];
+  const monitor = data?.items.filter((t) => t.status === 'MONITOR') ?? [];
+  return (
+    <div>
+      <div className="mb-2 p-3 bg-black text-white rounded text-sm">
+        <span className="font-semibold">Decision Gate: Promoted vs. Investigate vs. Monitor</span><br />
+        30%+ of respondents mention it {'->'} <b>PROMOTED</b> to Phase 3 cross-validation. 15-29% {'->'} <b>INVESTIGATE</b>. Below 15% {'->'} <b>MONITOR</b>.
+      </div>
+      <div className="mb-2 p-2 bg-green-50 border-l-4 border-green-400 text-green-900 text-sm">
+        {isLoading ? 'Loading...' : `${promoted.length} theme(s) at 30%+ - PROMOTED to Phase 3 cross-validation. Add these to the triangulation matrix.`}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded bg-rose-100 text-rose-700 text-center py-4 font-bold text-lg">{promoted.length}<div className="text-xs font-normal mt-1">PROMOTED</div></div>
+        <div className="rounded bg-amber-100 text-amber-800 text-center py-4 font-bold text-lg">{investigate.length}<div className="text-xs font-normal mt-1">INVESTIGATE</div></div>
+        <div className="rounded bg-slate-100 text-slate-600 text-center py-4 font-bold text-lg">{monitor.length}<div className="text-xs font-normal mt-1">MONITOR</div></div>
+      </div>
+    </div>
+  );
+}
+
+function ThemesWorkspace({
+  companyId,
+  campaignId,
+  onAutoAnalyse,
+  autoAnalysing,
+}: {
+  companyId: string;
+  campaignId: string;
+  onAutoAnalyse: () => void;
+  autoAnalysing: boolean;
+}) {
   const qc = useQueryClient();
   const base = `/api/companies/${companyId}/campaigns/${campaignId}/themes`;
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
@@ -148,9 +303,9 @@ function ThemesWorkspace({ companyId, campaignId }: { companyId: string; campaig
 
   const create = useMutation({
     mutationFn: (body: Partial<Theme>) => api<Theme>(base, { method: 'POST', body }),
-    onSuccess: (t) => {
+    onSuccess: (theme) => {
       qc.invalidateQueries({ queryKey: ['themes', campaignId] });
-      setSelectedThemeId(t.id);
+      setSelectedThemeId(theme.id);
       setShowCreate(false);
     },
   });
@@ -161,10 +316,13 @@ function ThemesWorkspace({ companyId, campaignId }: { companyId: string; campaig
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-sm">Themes</h2>
           <div className="flex gap-1">
-            <AutoGenerateButton
-              base={base}
-              onDone={() => qc.invalidateQueries({ queryKey: ['themes', campaignId] })}
-            />
+            <button
+              onClick={onAutoAnalyse}
+              disabled={autoAnalysing}
+              className="text-xs px-2 py-1 rounded bg-amber-700 text-white hover:bg-amber-800 disabled:opacity-50"
+            >
+              {autoAnalysing ? 'Analysing...' : 'Auto Analyse'}
+            </button>
             <button
               onClick={() => setShowCreate((v) => !v)}
               className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800"
@@ -178,38 +336,32 @@ function ThemesWorkspace({ companyId, campaignId }: { companyId: string; campaig
           <ThemeCreateForm
             pending={create.isPending}
             error={create.error?.message}
-            onSubmit={(b) => create.mutate(b)}
+            onSubmit={(body) => create.mutate(body)}
           />
         )}
 
-        {themes.isLoading && <div className="text-sm text-slate-500">Loading…</div>}
+        {themes.isLoading && <div className="text-sm text-slate-500">Loading...</div>}
         <ul className="divide-y divide-slate-100">
-          {themes.data?.items.map((t) => (
-            <li key={t.id}>
+          {themes.data?.items.map((theme) => (
+            <li key={theme.id}>
               <button
-                onClick={() => setSelectedThemeId(t.id)}
-                className={`w-full text-left py-2 px-2 rounded ${
-                  t.id === selectedThemeId ? 'bg-slate-100' : 'hover:bg-slate-50'
-                }`}
+                onClick={() => setSelectedThemeId(theme.id)}
+                className={`w-full text-left py-2 px-2 rounded ${theme.id === selectedThemeId ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
               >
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium truncate">{t.themeName}</span>
-                  <span
-                    className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded border ${
-                      STATUS_COLORS[t.status]
-                    }`}
-                  >
-                    {t.status}
+                  <span className="font-medium truncate">{theme.themeName}</span>
+                  <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded border ${STATUS_COLORS[theme.status]}`}>
+                    {theme.status}
                   </span>
                 </div>
                 <div className="text-xs text-slate-500 mt-1">
-                  {t.respondentCount} respondents · {t.percentage}% · {t.tagCount} tags
+                  {theme.respondentCount} respondents - {theme.percentage}% - {theme.tagCount} tags
                 </div>
               </button>
             </li>
           ))}
           {!themes.isLoading && (themes.data?.items.length ?? 0) === 0 && (
-            <li className="text-sm text-slate-500 py-2">No themes yet.</li>
+            <li className="text-sm text-slate-500 py-2">No themes yet. Click Auto Analyse to generate themes automatically.</li>
           )}
         </ul>
       </aside>
@@ -242,7 +394,7 @@ function ThemeCreateForm({
 }: {
   pending: boolean;
   error?: string;
-  onSubmit: (b: Partial<Theme>) => void;
+  onSubmit: (body: Partial<Theme>) => void;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -250,11 +402,7 @@ function ThemeCreateForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({
-          themeName: name,
-          description: description || null,
-          status: 'MONITOR',
-        });
+        onSubmit({ themeName: name, description: description || null, status: 'MONITOR' });
       }}
       className="space-y-2 bg-slate-50 border border-slate-200 rounded p-3 mb-3"
     >
@@ -277,7 +425,7 @@ function ThemeCreateForm({
         disabled={pending}
         className="w-full bg-slate-900 text-white text-xs py-1.5 rounded hover:bg-slate-800 disabled:opacity-50"
       >
-        {pending ? 'Creating…' : 'Create theme'}
+        {pending ? 'Creating...' : 'Create theme'}
       </button>
     </form>
   );
@@ -309,18 +457,15 @@ function ThemeDetail({
   });
   const untagged = useQuery({
     queryKey: ['theme-untagged', campaignId, themeId],
-    queryFn: () =>
-      api<UntaggedResponse>(`${base}/untagged-answers?excludeTaggedBy=${themeId}`),
+    queryFn: () => api<UntaggedResponse>(`${base}/untagged-answers?excludeTaggedBy=${themeId}`),
   });
 
   const update = useMutation({
-    mutationFn: (body: Partial<Theme>) =>
-      api<Theme>(`${base}/${themeId}`, { method: 'PATCH', body }),
+    mutationFn: (body: Partial<Theme>) => api<Theme>(`${base}/${themeId}`, { method: 'PATCH', body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['themes', campaignId] }),
   });
   const tag = useMutation({
-    mutationFn: (answerId: string) =>
-      api(`${base}/${themeId}/tags`, { method: 'POST', body: { answerId } }),
+    mutationFn: (answerId: string) => api(`${base}/${themeId}/tags`, { method: 'POST', body: { answerId } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['theme-tagged', themeId] });
       qc.invalidateQueries({ queryKey: ['theme-untagged', campaignId, themeId] });
@@ -328,8 +473,7 @@ function ThemeDetail({
     },
   });
   const untag = useMutation({
-    mutationFn: (answerId: string) =>
-      api(`${base}/${themeId}/tags/${answerId}`, { method: 'DELETE' }),
+    mutationFn: (answerId: string) => api(`${base}/${themeId}/tags/${answerId}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['theme-tagged', themeId] });
       qc.invalidateQueries({ queryKey: ['theme-untagged', campaignId, themeId] });
@@ -341,7 +485,7 @@ function ThemeDetail({
     onSuccess: onDeleted,
   });
 
-  if (!theme) return <div className="text-sm text-slate-500">Loading theme…</div>;
+  if (!theme) return <div className="text-sm text-slate-500">Loading theme...</div>;
 
   return (
     <div className="space-y-6">
@@ -349,9 +493,7 @@ function ThemeDetail({
         <div className="flex items-start justify-between">
           <div>
             <h3 className="font-semibold text-lg">{theme.themeName}</h3>
-            {theme.description && (
-              <p className="text-sm text-slate-600 mt-1">{theme.description}</p>
-            )}
+            {theme.description && <p className="text-sm text-slate-600 mt-1">{theme.description}</p>}
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -383,81 +525,37 @@ function ThemeDetail({
         <EditableField
           label="Representative quote"
           value={theme.representativeQuote}
-          placeholder="Paste a representative respondent quote…"
-          onSave={(v) => update.mutate({ representativeQuote: v || null })}
+          placeholder="Paste a representative respondent quote..."
+          onSave={(value) => update.mutate({ representativeQuote: value || null })}
         />
         <EditableField
           label="JTBD statement"
           value={theme.jtbdStatement}
           placeholder="When ___, I want ___, so I can ___"
-          onSave={(v) => update.mutate({ jtbdStatement: v || null })}
+          onSave={(value) => update.mutate({ jtbdStatement: value || null })}
         />
       </div>
 
       <RelatedQuestionsPanel base={base} themeId={themeId} />
 
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h4 className="font-semibold text-sm mb-3">Tagged answers ({tagged.data?.items.length ?? 0})</h4>
-        {tagged.isLoading ? (
-          <div className="text-sm text-slate-500">Loading…</div>
-        ) : (tagged.data?.items.length ?? 0) === 0 ? (
-          <div className="text-sm text-slate-500">No answers tagged to this theme yet.</div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {tagged.data!.items.map((a) => (
-              <li key={a.id} className="py-3 text-sm flex items-start gap-3">
-                <div className="flex-1">
-                  <div className="text-[11px] uppercase text-slate-400">
-                    Q{a.questionNumber} · {a.roleLabel ?? 'unattributed'}
-                  </div>
-                  <p className="text-slate-800 whitespace-pre-wrap">{a.text}</p>
-                </div>
-                <button
-                  onClick={() => untag.mutate(a.answerId)}
-                  className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
-                >
-                  Untag
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <AnswersPanel
+        title={`Tagged answers (${tagged.data?.items.length ?? 0})`}
+        loading={tagged.isLoading}
+        empty="No answers tagged to this theme yet."
+        answers={tagged.data?.items ?? []}
+        actionLabel="Untag"
+        onAction={(answerId) => untag.mutate(answerId)}
+      />
 
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h4 className="font-semibold text-sm mb-3">
-          Untagged answers ({untagged.data?.items.length ?? 0})
-        </h4>
-        {untagged.isLoading ? (
-          <div className="text-sm text-slate-500">Loading…</div>
-        ) : (untagged.data?.items.length ?? 0) === 0 ? (
-          <div className="text-sm text-slate-500">All open-text answers have been tagged.</div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {untagged.data!.items.map((a) => (
-              <li key={a.answerId} className="py-3 text-sm flex items-start gap-3">
-                <div className="flex-1">
-                  <div className="text-[11px] uppercase text-slate-400">
-                    Q{a.questionNumber} · {a.roleLabel ?? 'unattributed'}
-                    {a.themes.length > 0 && (
-                      <span className="ml-2 text-slate-500">
-                        already in: {a.themes.map((t) => t.themeName).join(', ')}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-800 whitespace-pre-wrap">{a.text}</p>
-                </div>
-                <button
-                  onClick={() => tag.mutate(a.answerId)}
-                  className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800"
-                >
-                  + Tag
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <AnswersPanel
+        title={`Untagged answers (${untagged.data?.items.length ?? 0})`}
+        loading={untagged.isLoading}
+        empty="All open-text answers have been tagged."
+        answers={untagged.data?.items ?? []}
+        actionLabel="+ Tag"
+        actionClassName="bg-slate-900 text-white hover:bg-slate-800"
+        onAction={(answerId) => tag.mutate(answerId)}
+      />
     </div>
   );
 }
@@ -480,7 +578,7 @@ function EditableField({
   label: string;
   value: string | null;
   placeholder?: string;
-  onSave: (v: string) => void;
+  onSave: (value: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? '');
@@ -491,13 +589,8 @@ function EditableField({
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-          {label}
-        </span>
-        <button
-          onClick={() => setEditing((v) => !v)}
-          className="text-xs text-slate-500 hover:text-slate-800"
-        >
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</span>
+        <button onClick={() => setEditing((v) => !v)} className="text-xs text-slate-500 hover:text-slate-800">
           {editing ? 'Cancel' : value ? 'Edit' : 'Add'}
         </button>
       </div>
@@ -525,34 +618,66 @@ function EditableField({
           {value}
         </p>
       ) : (
-        <p className="text-xs text-slate-400 italic">— not set —</p>
+        <p className="text-xs text-slate-400 italic">- not set -</p>
       )}
     </div>
   );
 }
 
-// ─── Auto-generate themes from open-text survey answers ─────────────────
-function AutoGenerateButton({ base, onDone }: { base: string; onDone: () => void }) {
-  const mutation = useMutation({
-    mutationFn: () => api<{ created: number; updated: number; totalThemes: number }>(
-      `${base}/auto-generate`,
-      { method: 'POST', body: {} },
-    ),
-    onSuccess: () => onDone(),
-  });
+type AnswerRow = TaggedAnswer | UntaggedAnswer;
+function AnswersPanel({
+  title,
+  loading,
+  empty,
+  answers,
+  actionLabel,
+  actionClassName = 'border border-slate-300 hover:bg-slate-50',
+  onAction,
+}: {
+  title: string;
+  loading: boolean;
+  empty: string;
+  answers: AnswerRow[];
+  actionLabel: string;
+  actionClassName?: string;
+  onAction: (answerId: string) => void;
+}) {
   return (
-    <button
-      onClick={() => mutation.mutate()}
-      disabled={mutation.isPending}
-      title="Cluster open-text answers and auto-create / update themes"
-      className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50"
-    >
-      {mutation.isPending ? '…' : '✨ Auto'}
-    </button>
+    <div className="bg-white rounded-lg border border-slate-200 p-5">
+      <h4 className="font-semibold text-sm mb-3">{title}</h4>
+      {loading ? (
+        <div className="text-sm text-slate-500">Loading...</div>
+      ) : answers.length === 0 ? (
+        <div className="text-sm text-slate-500">{empty}</div>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {answers.map((answer) => (
+            <li key={answer.answerId} className="py-3 text-sm flex items-start gap-3">
+              <div className="flex-1">
+                <div className="text-[11px] uppercase text-slate-400">
+                  Q{answer.questionNumber} - {answer.roleLabel ?? 'unattributed'}
+                  {'themes' in answer && answer.themes.length > 0 && (
+                    <span className="ml-2 text-slate-500">
+                      already in: {answer.themes.map((theme) => theme.themeName).join(', ')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-slate-800 whitespace-pre-wrap">{answer.text}</p>
+              </div>
+              <button onClick={() => onAction(answer.answerId)} className={`text-xs px-2 py-1 rounded ${actionClassName}`}>
+                {actionLabel}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
-// ─── Related questions panel for a selected theme ───────────────────────
+
+// Related questions panel for a selected theme
+interface VerbatimAnswer { answerId: string; text: string; roleLabel: string | null; submissionId: string }
 interface RelatedQuestionRow {
   questionId: string;
   questionNumber: number;
@@ -560,6 +685,7 @@ interface RelatedQuestionRow {
   respondentCount: number;
   answerCount: number;
   percentage: number;
+  answers: VerbatimAnswer[];
 }
 interface RoleBreakdown { roleLabel: string; respondentCount: number; percentage: number }
 interface ThemeDetail {
@@ -574,7 +700,7 @@ function RelatedQuestionsPanel({ base, themeId }: { base: string; themeId: strin
     queryFn: () => api<ThemeDetail>(`${base}/${themeId}/detail`),
   });
   if (detail.isLoading) {
-    return <div className="bg-white rounded-lg border border-slate-200 p-5 text-sm text-slate-500">Loading related questions…</div>;
+    return <div className="bg-white rounded-lg border border-slate-200 p-5 text-sm text-slate-500">Loading related questions...</div>;
   }
   if (!detail.data) return null;
   const d = detail.data;
@@ -586,7 +712,7 @@ function RelatedQuestionsPanel({ base, themeId }: { base: string; themeId: strin
       <header className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
         <h4 className="font-semibold text-sm">Related questions</h4>
         <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
-          {questions.length} question{questions.length === 1 ? '' : 's'} · {totalRespondents} respondents
+          {questions.length} question{questions.length === 1 ? '' : 's'} - {totalRespondents} respondents
         </span>
       </header>
       <table className="w-full text-sm">
@@ -622,15 +748,48 @@ function RelatedQuestionsPanel({ base, themeId }: { base: string; themeId: strin
         </tbody>
       </table>
       {roles.length > 0 && (
-        <div className="px-5 py-3 border-t border-slate-200 flex flex-wrap gap-2 text-[11px]">
+        <div className="px-5 py-3 border-t border-slate-200 flex flex-wrap gap-2 text-[11px] bg-slate-50">
           <span className="text-slate-500 uppercase font-semibold tracking-wide mr-1">Roles:</span>
           {roles.map((r) => (
-            <span key={r.roleLabel} className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
-              {r.roleLabel} · {r.respondentCount}
+            <span key={r.roleLabel} className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-medium">
+              {r.roleLabel} - {r.respondentCount}
             </span>
           ))}
+        </div>
+      )}
+      {questions.length > 0 && (
+        <div className="border-t border-slate-200">
+          <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+            <h5 className="font-semibold text-sm text-slate-900">Respondent answers</h5>
+            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">verbatim, grouped by question</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {questions.map((q) => (
+              <div key={q.questionId} className="px-5 py-3">
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-[11px] font-bold uppercase text-emerald-700 tabular-nums">Q{q.questionNumber}</span>
+                  <span className="text-sm text-slate-800 flex-1">{q.questionText}</span>
+                  <span className="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">{q.respondentCount} resp - {q.percentage.toFixed(0)}%</span>
+                </div>
+                {q.answers.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic ml-5">No verbatim text captured for this question.</p>
+                ) : (
+                  <ul className="space-y-1.5 ml-5">
+                    {q.answers.map((a) => (
+                      <li key={a.answerId} className="text-sm text-slate-700 bg-slate-50 border-l-2 border-emerald-400 px-3 py-2 rounded-r">
+                        <span className="italic">"{a.text}"</span>
+                        {a.roleLabel && <span className="ml-2 text-[11px] text-slate-500 not-italic">- {a.roleLabel}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+

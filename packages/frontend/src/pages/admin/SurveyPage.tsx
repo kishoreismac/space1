@@ -1,383 +1,209 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Campaign, Company, Invite, PublicQuestionnaire } from '@space/shared';
-import { api } from '../../lib/api';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import type { Campaign, Company, PublicSurveyContext } from '@space/shared';
+import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../stores/auth';
+import { SurveyFlow } from '../survey/SurveyLanding';
 
 interface CompaniesResponse { items: Company[]; }
 interface CampaignsResponse { items: Campaign[]; }
-interface InvitesResponse { items: Invite[]; }
-interface QuestionnairesResponse { items: PublicQuestionnaire[]; }
-interface CampaignDetail extends Campaign {
-  stats: { inviteCount: number; submissionCount: number; completedInvites: number };
-}
 
+/**
+ * Admin Survey page.
+ *
+ * Replaces the old campaign workspace: the admin now sees the FULL
+ * participant questionnaire inline and can submit a sample response that
+ * feeds the downstream phases (P1 triage, P2 themes, etc.).
+ *
+ * Flow:
+ *   1. Pick company + campaign at the top.
+ *   2. POST /api/public/campaigns/:campaignId/join → mint a one-off anonymous invite token.
+ *   3. GET /api/public/survey/:token → load the questionnaire.
+ *   4. Reuse the existing <SurveyFlow> component used by /survey/:token participants.
+ *
+ * The admin can submit; the response is tracked on the campaign just like any
+ * other respondent.
+ */
 export default function SurveyPage() {
   const role = useAuth((s) => s.user?.role);
   const userCompanyId = useAuth((s) => s.user?.companyId ?? null);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(userCompanyId);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(userCompanyId);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   const companies = useQuery({
     queryKey: ['companies'],
     queryFn: () => api<CompaniesResponse>('/api/companies'),
   });
-
   useEffect(() => {
     const first = companies.data?.items[0];
-    if (!selectedCompanyId && first) {
-      setSelectedCompanyId(first.id);
-    }
-  }, [companies.data, selectedCompanyId]);
-
-  return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold">Survey campaigns</h1>
-        <p className="text-sm text-slate-500">
-          Create a campaign tied to a questionnaire, generate invite links, and track responses.
-        </p>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {role === 'SUPER_ADMIN' && (
-          <aside className="lg:col-span-1 bg-white rounded-lg border border-slate-200 p-4">
-            <h2 className="font-semibold mb-2 text-sm">Company</h2>
-            <select
-              value={selectedCompanyId ?? ''}
-              onChange={(e) => {
-                setSelectedCompanyId(e.target.value || null);
-                setSelectedCampaignId(null);
-              }}
-              className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
-            >
-              <option value="">— pick a company —</option>
-              {companies.data?.items.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </aside>
-        )}
-
-        <section className={role === 'SUPER_ADMIN' ? 'lg:col-span-2' : 'lg:col-span-3'}>
-          {selectedCompanyId ? (
-            <CampaignWorkspace
-              companyId={selectedCompanyId}
-              selectedCampaignId={selectedCampaignId}
-              onSelect={setSelectedCampaignId}
-            />
-          ) : (
-            <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
-              Select a company to manage its campaigns.
-            </div>
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function CampaignWorkspace({
-  companyId,
-  selectedCampaignId,
-  onSelect,
-}: {
-  companyId: string;
-  selectedCampaignId: string | null;
-  onSelect: (id: string | null) => void;
-}) {
-  const qc = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
+    if (!companyId && first) setCompanyId(first.id);
+  }, [companies.data, companyId]);
 
   const campaigns = useQuery({
     queryKey: ['campaigns', companyId],
     queryFn: () => api<CampaignsResponse>(`/api/companies/${companyId}/campaigns`),
+    enabled: !!companyId,
   });
-  const questionnaires = useQuery({
-    queryKey: ['questionnaires'],
-    queryFn: () => api<QuestionnairesResponse>('/api/questionnaires'),
+  useEffect(() => {
+    const list = campaigns.data?.items ?? [];
+    const firstActive = list.find((c) => c.status === 'ACTIVE') ?? list[0];
+    if (!campaignId && firstActive) setCampaignId(firstActive.id);
+  }, [campaigns.data, campaignId]);
+
+  // Reset token when campaign changes
+  useEffect(() => {
+    setToken(null);
+    setJoinError(null);
+  }, [campaignId]);
+
+  const join = useMutation({
+    mutationFn: async (cid: string) => {
+      const r = await api<{ token: string }>(`/api/public/campaigns/${cid}/join`, {
+        method: 'POST',
+        body: {},
+        auth: false,
+      });
+      return r.token;
+    },
+    onSuccess: (t) => setToken(t),
+    onError: (e) => setJoinError((e as ApiError).message),
   });
 
-  const create = useMutation({
-    mutationFn: (body: { questionnaireId: string; title: string }) =>
-      api<Campaign>(`/api/companies/${companyId}/campaigns`, { method: 'POST', body }),
-    onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: ['campaigns', companyId] });
-      onSelect(created.id);
-      setShowCreate(false);
-    },
+  const ctx = useQuery({
+    queryKey: ['admin-survey', token],
+    queryFn: () =>
+      api<PublicSurveyContext>(`/api/public/survey/${token}`, { auth: false }),
+    enabled: !!token,
+    retry: false,
   });
+
+  const selectedCampaign = campaigns.data?.items.find((c) => c.id === campaignId);
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border border-slate-200 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-sm">Campaigns</h2>
-          <button
-            onClick={() => setShowCreate((v) => !v)}
-            className="text-xs px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800"
-          >
-            {showCreate ? 'Cancel' : '+ New campaign'}
-          </button>
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="rounded-lg bg-slate-900 text-white p-6 md:p-8 relative overflow-hidden">
+        <div className="absolute right-4 top-2 font-serif text-[6rem] leading-none text-white/5 select-none pointer-events-none">
+          ◆
         </div>
+        <div className="relative">
+          <div className="text-[10px] font-mono uppercase tracking-[4px] text-teal-300 mb-2">
+            Survey Preview & Test Submission
+          </div>
+          <h1 className="font-serif text-2xl md:text-3xl font-semibold">
+            Take the full SPACE questionnaire
+          </h1>
+          <p className="text-sm text-slate-300 mt-2 max-w-2xl">
+            Open the live survey for any campaign and submit a test response. Your answers will be
+            recorded against the selected campaign and feed Phase 1 — Phase 5 analysis.
+          </p>
+        </div>
+      </section>
 
-        {showCreate && (
-          <CampaignCreateForm
-            questionnaires={questionnaires.data?.items ?? []}
-            pending={create.isPending}
-            error={create.error?.message}
-            onSubmit={(b) => create.mutate(b)}
-          />
+      {/* ── Selector ─────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-lg border border-slate-200 p-4 flex flex-wrap gap-3 items-end">
+        {role === 'SUPER_ADMIN' && (
+          <label className="text-sm">
+            <span className="block text-[11px] font-mono uppercase tracking-[2px] text-slate-500 mb-1">
+              Company
+            </span>
+            <select
+              value={companyId ?? ''}
+              onChange={(e) => {
+                setCompanyId(e.target.value || null);
+                setCampaignId(null);
+              }}
+              className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-[220px]"
+            >
+              <option value="">—</option>
+              {companies.data?.items.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </label>
         )}
-
-        {campaigns.isLoading && <div className="text-sm text-slate-500">Loading…</div>}
-        <ul className="divide-y divide-slate-100">
-          {campaigns.data?.items.map((c) => (
-            <li key={c.id}>
-              <button
-                onClick={() => onSelect(c.id)}
-                className={`w-full text-left py-2 px-2 rounded text-sm flex items-center justify-between ${
-                  c.id === selectedCampaignId ? 'bg-slate-100' : 'hover:bg-slate-50'
-                }`}
-              >
-                <span>
-                  <span className="font-medium">{c.title}</span>
-                  {c.cycle && <span className="text-slate-500 ml-2">· {c.cycle}</span>}
-                </span>
-                <StatusPill status={c.status} />
-              </button>
-            </li>
-          ))}
-          {!campaigns.isLoading && (campaigns.data?.items.length ?? 0) === 0 && (
-            <li className="text-sm text-slate-500 py-2">No campaigns yet.</li>
-          )}
-        </ul>
+        <label className="text-sm">
+          <span className="block text-[11px] font-mono uppercase tracking-[2px] text-slate-500 mb-1">
+            Campaign
+          </span>
+          <select
+            value={campaignId ?? ''}
+            onChange={(e) => setCampaignId(e.target.value || null)}
+            disabled={!companyId}
+            className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-[260px]"
+          >
+            <option value="">—</option>
+            {campaigns.data?.items.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title} ({c.status})
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex-1" />
+        {campaignId && !token && (
+          <button
+            onClick={() => join.mutate(campaignId)}
+            disabled={join.isPending}
+            className="px-4 py-2 rounded bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {join.isPending ? 'Opening…' : '▶ Open survey'}
+          </button>
+        )}
+        {token && (
+          <button
+            onClick={() => { setToken(null); setJoinError(null); }}
+            className="px-3 py-2 rounded border border-slate-300 text-sm hover:bg-slate-50"
+          >
+            Start a new test submission
+          </button>
+        )}
       </div>
 
-      {selectedCampaignId && (
-        <CampaignDetailPanel companyId={companyId} campaignId={selectedCampaignId} />
+      {joinError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded p-3 text-sm">
+          {joinError}
+        </div>
+      )}
+
+      {/* ── Empty state ──────────────────────────────────────────────────── */}
+      {!campaignId && (
+        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
+          Pick a campaign above to load its questionnaire.
+        </div>
+      )}
+
+      {campaignId && !token && !join.isPending && (
+        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
+          {selectedCampaign ? (
+            <>
+              Click <strong>Open survey</strong> to load the full questionnaire for{' '}
+              <strong>{selectedCampaign.title}</strong> and submit a test response.
+            </>
+          ) : (
+            'Loading campaign…'
+          )}
+        </div>
+      )}
+
+      {/* ── The survey itself ────────────────────────────────────────────── */}
+      {token && ctx.isLoading && (
+        <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-sm text-slate-500">
+          Loading questionnaire…
+        </div>
+      )}
+      {token && ctx.error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded p-4 text-sm">
+          {(ctx.error as Error).message}
+        </div>
+      )}
+      {token && ctx.data && (
+        <div className="rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+          <SurveyFlow token={token} context={ctx.data} />
+        </div>
       )}
     </div>
   );
 }
-
-function CampaignCreateForm({
-  questionnaires,
-  pending,
-  error,
-  onSubmit,
-}: {
-  questionnaires: PublicQuestionnaire[];
-  pending: boolean;
-  error?: string;
-  onSubmit: (b: { questionnaireId: string; title: string }) => void;
-}) {
-  const [title, setTitle] = useState('');
-  const [questionnaireId, setQuestionnaireId] = useState(questionnaires[0]?.id ?? '');
-
-  useEffect(() => {
-    if (!questionnaireId && questionnaires[0]) setQuestionnaireId(questionnaires[0].id);
-  }, [questionnaires, questionnaireId]);
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!questionnaireId) return;
-        onSubmit({ questionnaireId, title });
-      }}
-      className="space-y-2 bg-slate-50 border border-slate-200 rounded p-3 mb-3"
-    >
-      <input
-        required
-        placeholder="Campaign title (e.g. Q1 2026 Pulse)"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
-      />
-      <select
-        value={questionnaireId}
-        onChange={(e) => setQuestionnaireId(e.target.value)}
-        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
-      >
-        {questionnaires.map((q) => (
-          <option key={q.id} value={q.id}>
-            {q.title}
-          </option>
-        ))}
-      </select>
-      {error && <div className="text-xs text-red-600">{error}</div>}
-      <button
-        disabled={pending || !questionnaireId}
-        className="w-full bg-slate-900 text-white text-xs py-1.5 rounded hover:bg-slate-800 disabled:opacity-50"
-      >
-        {pending ? 'Creating…' : 'Create campaign'}
-      </button>
-    </form>
-  );
-}
-
-function CampaignDetailPanel({ companyId, campaignId }: { companyId: string; campaignId: string }) {
-  const qc = useQueryClient();
-  const base = `/api/companies/${companyId}/campaigns/${campaignId}`;
-
-  const detail = useQuery({
-    queryKey: ['campaign', campaignId],
-    queryFn: () => api<CampaignDetail>(base),
-  });
-  const invites = useQuery({
-    queryKey: ['invites', campaignId],
-    queryFn: () => api<InvitesResponse>(`${base}/invites`),
-  });
-
-  const [count, setCount] = useState(5);
-  const addInvites = useMutation({
-    mutationFn: (n: number) =>
-      api<InvitesResponse>(`${base}/invites`, { method: 'POST', body: { count: n } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['invites', campaignId] });
-      qc.invalidateQueries({ queryKey: ['campaign', campaignId] });
-    },
-  });
-
-  const updateStatus = useMutation({
-    mutationFn: (status: Campaign['status']) =>
-      api<Campaign>(base, { method: 'PATCH', body: { status } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['campaign', campaignId] });
-      qc.invalidateQueries({ queryKey: ['campaigns', companyId] });
-    },
-  });
-
-  if (detail.isLoading) return <div className="text-sm text-slate-500">Loading campaign…</div>;
-  if (!detail.data) return null;
-  const c = detail.data;
-
-  return (
-    <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold">{c.title}</h3>
-          <p className="text-xs text-slate-500">{c.cycle ?? 'No cycle set'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <StatusPill status={c.status} />
-          {c.status !== 'CLOSED' && c.status !== 'ARCHIVED' && (
-            <button
-              onClick={() => updateStatus.mutate('CLOSED')}
-              className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
-            >
-              Close
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 text-center">
-        <Stat label="Invites" value={c.stats.inviteCount} />
-        <Stat label="Started/Completed" value={c.stats.completedInvites} />
-        <Stat label="Submissions" value={c.stats.submissionCount} />
-      </div>
-
-      <div className="border-t border-slate-100 pt-4">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="font-semibold text-sm">Invites</h4>
-          <form
-            className="flex items-center gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              addInvites.mutate(count);
-            }}
-          >
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={count}
-              onChange={(e) => setCount(Math.max(1, Number(e.target.value || 1)))}
-              className="w-20 border border-slate-300 rounded px-2 py-1 text-xs"
-            />
-            <button
-              disabled={addInvites.isPending}
-              className="text-xs px-3 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              {addInvites.isPending ? 'Generating…' : '+ Generate invites'}
-            </button>
-          </form>
-        </div>
-
-        {invites.isLoading && <div className="text-sm text-slate-500">Loading…</div>}
-        {invites.data && invites.data.items.length === 0 && (
-          <div className="text-sm text-slate-500">
-            No invites yet. Generate some to share survey links.
-          </div>
-        )}
-        {invites.data && invites.data.items.length > 0 && (
-          <InviteList items={invites.data.items} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InviteList({ items }: { items: Invite[] }) {
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  return (
-    <ul className="divide-y divide-slate-100 text-sm">
-      {items.map((inv) => {
-        const url = `${baseUrl}/survey/${inv.uniqueToken}`;
-        return (
-          <li key={inv.id} className="py-2 flex items-center gap-3">
-            <span className="w-24 text-xs">
-              <StatusPill status={inv.status} />
-            </span>
-            <code className="flex-1 truncate text-xs text-slate-600">{url}</code>
-            <button
-              onClick={() => navigator.clipboard?.writeText(url)}
-              className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
-            >
-              Copy
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="bg-slate-50 border border-slate-200 rounded py-3">
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
-    </div>
-  );
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-slate-200 text-slate-700',
-  ACTIVE: 'bg-emerald-100 text-emerald-700',
-  CLOSED: 'bg-amber-100 text-amber-800',
-  ARCHIVED: 'bg-slate-100 text-slate-500',
-  SENT: 'bg-sky-100 text-sky-700',
-  STARTED: 'bg-indigo-100 text-indigo-700',
-  COMPLETED: 'bg-emerald-100 text-emerald-700',
-  EXPIRED: 'bg-amber-100 text-amber-800',
-  VOIDED: 'bg-red-100 text-red-700',
-};
-
-function StatusPill({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-block text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded ${
-        STATUS_COLORS[status] ?? 'bg-slate-100 text-slate-600'
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
-// end

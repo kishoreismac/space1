@@ -175,6 +175,13 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);line-
 .activity-collapsed .activity-toggle{transform:rotate(-90deg)}
 
 /* ── DECISION GATE ── */
+.p2-run-title{color:var(--ph2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.p2-run-title:hover{color:#78350F}
+.p2-section-note{font-size:11px;color:var(--muted);margin-right:8px}
+.p2-helper-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:1rem}
+.p2-helper-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+.p2-helper-card strong{display:block;font-size:12px;margin-bottom:4px}
+.p2-helper-card p{font-size:11px;color:var(--muted);line-height:1.5}
 .gate{background:var(--ink);border-radius:10px;padding:1.2rem 1.5rem;display:flex;gap:12px;align-items:flex-start;margin:1rem 0}
 .gate-icon{font-size:1.3rem;flex-shrink:0;margin-top:2px}
 .gate h4{font-family:'Fraunces',serif;font-size:.95rem;font-weight:600;color:#FCD34D;margin-bottom:3px}
@@ -674,17 +681,16 @@ hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
 <div class="wrap">
 
   <!-- ── AUTO-ANALYSIS BANNER ── -->
-  <div style="background:linear-gradient(135deg,var(--ph2),#78350F);border-radius:var(--radius);padding:1.4rem 1.8rem;margin-bottom:1.5rem;margin-top:2rem;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+  <div style="display:none">
     <div style="flex:1">
-      <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#FCD34D;margin-bottom:4px">Auto-Analysis Engine</div>
-      <div style="font-family:'Fraunces',serif;font-size:1.1rem;font-weight:600;color:#fff">Click "Read &amp; Analyse Results" to automatically process all open text responses</div>
+      <div class="p2-run-title" role="button" tabindex="0" onclick="readAndAnalyseResults()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();readAndAnalyseResults();}" style="font-family:'Fraunces',serif;font-size:1.2rem;font-weight:700;color:#FCD34D;margin-bottom:4px">Read &amp; Analyse Results</div>
+      <div style="font-family:'Fraunces',serif;font-size:1.05rem;font-weight:600;color:#fff">Automatically process all open text responses</div>
       <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:3px">Reads Q10 / Q20 / Q40 / Q50 from all survey responses → clusters themes → applies 30% threshold → detects Likert misalignments</div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn" style="background:#FCD34D;color:#78350F;font-weight:700;padding:12px 28px" onclick="readAndAnalyseResults()">
+      <span style="display:none">
         🔍 Read &amp; Analyse Results
-      </button>
-      <button class="btn btn-outline btn-sm" style="color:rgba(255,255,255,.6);border-color:rgba(255,255,255,.25)" onclick="clearP2Analysis()">Clear &amp; Reset</button>
+      </span>
     </div>
   </div>
 
@@ -700,12 +706,12 @@ hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
     <div class="timing">Cluster Q10/Q20/Q40/Q50 themes · Apply 30% threshold · Extract JTBD statements · Preserve verbatim quotes</div>
   </div>
 
-  <!-- Activity 1: Theme Entry Template -->
+  <!-- Activity 1: Read and analyse results -->
   <div class="activity-block" id="act2-1">
     <div class="activity-header" onclick="toggleActivity('act2-1')">
       <div class="activity-num" style="background:var(--ph2)">1</div>
-      <div class="activity-title">Theme Clustering Template</div>
-      <div class="muted" style="font-size:11px;margin-right:8px">Enter each theme you identify from open text responses</div>
+      <div class="activity-title p2-run-title" role="button" tabindex="0" onclick="event.stopPropagation();runP2AnalysisFromTitle();" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();runP2AnalysisFromTitle();}">Read &amp; Analyse Results</div>
+      <div class="p2-section-note">Click the title to cluster all Q10/Q20/Q40/Q50 responses automatically</div>
       <div class="activity-toggle">▾</div>
     </div>
     <div class="activity-body">
@@ -748,7 +754,7 @@ hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
   <div class="activity-block activity-collapsed" id="act2-2">
     <div class="activity-header" onclick="toggleActivity('act2-2')">
       <div class="activity-num" style="background:var(--ph2)">2</div>
-      <div class="activity-title">30% Threshold Gate</div>
+      <div class="activity-title">Apply the 30% Threshold Rule</div>
       <div class="muted" style="font-size:11px;margin-right:8px">Auto-applied to themes you enter above</div>
       <div class="activity-toggle">▾</div>
     </div>
@@ -765,8 +771,8 @@ hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
   <div class="activity-block activity-collapsed" id="act2-3">
     <div class="activity-header" onclick="toggleActivity('act2-3')">
       <div class="activity-num" style="background:var(--ph2)">3</div>
-      <div class="activity-title">Likert vs. Open Text Misalignment Check</div>
-      <div class="muted" style="font-size:11px;margin-right:8px">Identify hidden blockers the Likert scale missed</div>
+      <div class="activity-title">Extract JTBD &amp; Check Misalignment</div>
+      <div class="muted" style="font-size:11px;margin-right:8px">Preserve developer language and identify hidden blockers</div>
       <div class="activity-toggle">▾</div>
     </div>
     <div class="activity-body">
@@ -1572,6 +1578,12 @@ const THEME_SEEDS = [
     jtbd: "When I need to solve a complex problem, I want at least two uninterrupted hours of deep work daily so I can enter a flow state."
   },
 ];
+
+function runP2AnalysisFromTitle() {
+  const section = document.getElementById('act2-1');
+  if (section) section.classList.remove('activity-collapsed');
+  readAndAnalyseResults();
+}
 
 async function readAndAnalyseResults() {
   // Collect all open text responses from all sources

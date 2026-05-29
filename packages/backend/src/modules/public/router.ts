@@ -1,10 +1,14 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { ZodError } from 'zod';
 import { reverseScore, SubmissionPayloadSchema } from '@space/shared';
 import { HttpError } from '../../middleware/error.js';
 import { prisma } from '../../prisma/client.js';
 import { toPublicQuestionnaire } from '../questionnaires/service.js';
+
+function makeToken(): string {
+  return randomBytes(16).toString('base64url');
+}
 
 export const publicRouter = Router();
 
@@ -44,6 +48,31 @@ async function loadInviteOrFail(token: string) {
   }
   return invite;
 }
+
+// ─── POST shared/anonymous join — mint a fresh invite for a campaign ───
+publicRouter.post('/campaigns/:campaignId/join', async (req, res, next) => {
+  try {
+    const { campaignId } = req.params;
+    const campaign = await prisma.surveyCampaign.findUnique({ where: { id: campaignId } });
+    if (!campaign) throw new HttpError(404, 'Campaign not found');
+    if (campaign.status !== 'ACTIVE' && campaign.status !== 'DRAFT') {
+      throw new HttpError(410, `Campaign is ${campaign.status.toLowerCase()}`);
+    }
+    const invite = await prisma.surveyInvite.create({
+      data: {
+        campaignId,
+        uniqueToken: makeToken(),
+        status: 'STARTED',
+        sentAt: new Date(),
+        startedAt: new Date(),
+      },
+    });
+    if (campaign.status === 'DRAFT') {
+      await prisma.surveyCampaign.update({ where: { id: campaignId }, data: { status: 'ACTIVE' } });
+    }
+    res.status(201).json({ token: invite.uniqueToken });
+  } catch (e) { next(e); }
+});
 
 // ─── GET context ───────────────────────────────────────────────────────
 publicRouter.get('/survey/:token', async (req, res, next) => {
