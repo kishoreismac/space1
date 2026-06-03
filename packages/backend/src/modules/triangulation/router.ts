@@ -10,6 +10,7 @@ import { HttpError } from '../../middleware/error.js';
 import { prisma } from '../../prisma/client.js';
 import { recordAudit } from '../../lib/audit.js';
 import { assertCompanyAccess, requireAuth, requireRole } from '../auth/middleware.js';
+import { trySaveArtifact } from '../../lib/storage.js';
 
 export const triangulationRouter = Router({ mergeParams: true });
 triangulationRouter.use(requireAuth);
@@ -142,6 +143,14 @@ triangulationRouter.put(
       recordAudit(req, 'triangulation.doraMetrics.save', 'ValidationSignal', saved.id, {
         cycle,
         filledValues,
+      });
+      // Mirror to Azure Blob Storage as durable artifact
+      await trySaveArtifact('dora-metrics', companyId, campaignId, {
+        cycle,
+        metrics: data,
+        filledValues,
+        savedBy: req.auth?.sub ?? null,
+        savedAt: new Date().toISOString(),
       });
       res.json({ cycle, metrics: data, updatedAt: saved.createdAt });
     } catch (e) {

@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/auth';
 
 const NAV = [
+  { to: '/admin/dashboard', label: 'Dashboard' },
   { to: '/admin/setup', label: 'Setup' },
   { to: '/admin/questions', label: 'Questions' },
   { to: '/admin/survey', label: 'Survey' },

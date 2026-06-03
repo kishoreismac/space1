@@ -11,6 +11,7 @@ import {
 import { HttpError } from '../../middleware/error.js';
 import { prisma } from '../../prisma/client.js';
 import { assertCompanyAccess, requireAuth } from '../auth/middleware.js';
+import { trySaveArtifact } from '../../lib/storage.js';
 
 export const reportRouter = Router({ mergeParams: true });
 reportRouter.use(requireAuth);
@@ -239,7 +240,7 @@ reportRouter.get('/', async (req, res, next) => {
         title: campaign.title,
         status: campaign.status,
         startDate: campaign.startDate,
-        endDate: campaign.endDate,
+        endDate: campaign.closeDate,
         questionnaire: campaign.questionnaire,
       },
       participation: {
@@ -288,6 +289,32 @@ reportRouter.get('/', async (req, res, next) => {
       },
       recommendations,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /save — build the report payload and persist it to Azure Blob (reports/)
+reportRouter.post('/save', async (req, res, next) => {
+  try {
+    const { companyId, campaignId } = req.params as {
+      companyId: string;
+      campaignId: string;
+    };
+    assertCompanyAccess(req.auth, companyId);
+    // Re-use the GET handler by issuing an internal fetch via the express router is awkward;
+    // simplest: tell the client to GET / then POST it back here as `body.report`.
+    // Body shape: { report: <whatever the GET / endpoint returned> }
+    const report = (req.body && (req.body as Record<string, unknown>).report) ?? req.body;
+    if (!report || typeof report !== 'object') {
+      throw new HttpError(400, 'Body must contain a "report" object (the rendered report payload).');
+    }
+    const meta = await trySaveArtifact('reports', companyId, campaignId, {
+      savedBy: req.auth?.sub ?? null,
+      savedAt: new Date().toISOString(),
+      report,
+    });
+    res.status(201).json(meta ?? { saved: false, reason: 'storage_not_configured' });
   } catch (e) {
     next(e);
   }

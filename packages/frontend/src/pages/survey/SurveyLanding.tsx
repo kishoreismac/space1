@@ -99,6 +99,7 @@ export { SurveyFlow };
 function SurveyFlow({ token, context }: { token: string; context: PublicSurveyContext }) {
   const { questionnaire, campaign, company, teams, invite } = context;
 
+  const [participantName, setParticipantName] = useState('');
   const [teamId, setTeamId] = useState<string | null>(invite.teamId);
   const [roleLabel, setRoleLabel] = useState<string | null>(invite.roleLabel);
   const [yearsAtCompany, setYearsAtCompany] = useState<string | null>(null);
@@ -198,6 +199,14 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
   function handleSubmit() {
     setErrorMsg(null);
 
+    if (!participantName.trim()) {
+      setErrorMsg('Please enter your name before submitting.');
+      const el = document.getElementById('participant-name');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      showToast('Your name is required to submit.');
+      return;
+    }
+
     // Validate required
     const missing: number[] = [];
     for (const q of questionnaire.questions) {
@@ -221,6 +230,7 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
     }
 
     const payload: SubmissionPayload = {
+      participantName: participantName.trim(),
       teamId: teamId || null,
       roleLabel: roleLabel || null,
       yearsAtCompany: yearsAtCompany || null,
@@ -228,6 +238,93 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
       answers: Object.values(answers),
     };
     submit.mutate(payload);
+  }
+
+  function buildExportRows() {
+    const teamName = teams.find((t) => t.id === teamId)?.name ?? null;
+    return questionnaire.questions.map((q) => {
+      const a = answers[q.questionNumber];
+      return {
+        participantName: participantName.trim() || '(not entered)',
+        teamId: teamId ?? '',
+        teamName: teamName ?? '',
+        roleLabel: roleLabel ?? '',
+        yearsAtCompany: yearsAtCompany ?? '',
+        primaryTechnology: primaryTechnology ?? '',
+        company: company.name,
+        campaign: campaign.title,
+        cycle: campaign.cycle ?? '',
+        questionNumber: q.questionNumber,
+        questionText: q.text,
+        dimensionCode: q.dimensionCode,
+        questionType: q.type,
+        rawValue: a?.rawValue ?? '',
+        textValue: a?.textValue ?? '',
+      };
+    });
+  }
+
+  function downloadFile(filename: string, content: string, mime: string) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCsv() {
+    const rows = buildExportRows();
+    const headers = Object.keys(rows[0] ?? {});
+    const escape = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [headers.join(',')];
+    for (const r of rows) lines.push(headers.map((h) => escape((r as Record<string, unknown>)[h])).join(','));
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeName = (participantName.trim() || 'response').replace(/[^a-zA-Z0-9]+/g, '_');
+    downloadFile(`survey-${safeName}-${stamp}.csv`, lines.join('\n'), 'text/csv;charset=utf-8');
+    showToast('CSV downloaded');
+  }
+
+  function exportJson() {
+    const teamName = teams.find((t) => t.id === teamId)?.name ?? null;
+    const payload = {
+      participant: {
+        name: participantName.trim() || '(not entered)',
+        roleLabel,
+        teamId,
+        teamName,
+        yearsAtCompany,
+        primaryTechnology,
+      },
+      company: { id: company.id, name: company.name },
+      campaign: { id: campaign.id, title: campaign.title, cycle: campaign.cycle },
+      questionnaire: {
+        title: questionnaire.title,
+        questions: questionnaire.questions.map((q) => ({
+          number: q.questionNumber,
+          text: q.text,
+          dimensionCode: q.dimensionCode,
+          type: q.type,
+          rawValue: answers[q.questionNumber]?.rawValue ?? null,
+          textValue: answers[q.questionNumber]?.textValue ?? null,
+        })),
+      },
+      exportedAt: new Date().toISOString(),
+    };
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeName = (participantName.trim() || 'response').replace(/[^a-zA-Z0-9]+/g, '_');
+    downloadFile(
+      `survey-${safeName}-${stamp}.json`,
+      JSON.stringify(payload, null, 2),
+      'application/json',
+    );
+    showToast('JSON downloaded');
   }
 
   if (submitted) {
@@ -330,6 +427,19 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
         <div className="ctx-card">
           <div className="ctx-title">About you — context helps us interpret results</div>
           <div className="ctx-grid">
+            <div className="field-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="field-label" htmlFor="participant-name">
+                Your name <span style={{ color: '#FCA5A5' }}>*</span>
+              </label>
+              <input
+                id="participant-name"
+                className="field-input"
+                value={participantName}
+                onChange={(e) => setParticipantName(e.target.value)}
+                placeholder="e.g. Jane Doe"
+                required
+              />
+            </div>
             <div className="field-group">
               <label className="field-label">Team / Squad</label>
               <select
@@ -453,6 +563,44 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
               ? 'Submitting…'
               : `Submit ${completed}/${totalQuestions} responses ▶`}
           </button>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.75rem',
+              justifyContent: 'center',
+              marginTop: '0.75rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="submit-btn"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                color: '#E5E7EB',
+                border: '1px solid rgba(255,255,255,0.18)',
+                padding: '.55rem 1.1rem',
+                fontSize: 12,
+              }}
+            >
+              ⬇ Download as CSV
+            </button>
+            <button
+              type="button"
+              onClick={exportJson}
+              className="submit-btn"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                color: '#E5E7EB',
+                border: '1px solid rgba(255,255,255,0.18)',
+                padding: '.55rem 1.1rem',
+                fontSize: 12,
+              }}
+            >
+              ⬇ Download as JSON
+            </button>
+          </div>
           <p className="submit-note">
             Required: {totalScalable} scaled questions ·{' '}
             {questionnaire.questions.filter((q) => q.type === 'OPEN_TEXT').length} open-ended

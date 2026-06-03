@@ -1,0 +1,432 @@
+// SPACE Platform — Prisma schema
+// Dev provider is SQLite. For production, switch to "postgresql".
+// NOTE: SQLite does not support native enums. All previously-enum fields
+// are stored as String columns. Allowed values are validated at the API
+// boundary via Zod schemas in @space/shared (see src/types).
+//
+// Allowed string values per column (kept in sync with shared types):
+//   UserRole          : SUPER_ADMIN | COMPANY_ADMIN | ANALYST | PARTICIPANT
+//   EntityStatus      : ACTIVE | ARCHIVED
+//   QuestionnaireStatus : DRAFT | PUBLISHED | ARCHIVED
+//   QuestionType      : LIKERT | OPEN_TEXT | SINGLE_CHOICE | MULTI_CHOICE
+//   CampaignStatus    : DRAFT | ACTIVE | CLOSED | ARCHIVED
+//   InviteStatus      : SENT | STARTED | COMPLETED | EXPIRED | VOIDED
+//   SubmissionStatus  : IN_PROGRESS | COMPLETED | VOIDED
+//   ScoreBand         : CRITICAL | SIGNIFICANT | MODERATE | HEALTHY | EXCELLENT
+//   Priority          : P1 | P2 | P3 | MONITOR
+//   ThemeStatus       : PROMOTE | INVESTIGATE | MONITOR
+//   SignalType        : DORA | PR | CICD | IDE | INCIDENT | CALENDAR | SLACK | JOURNEY_MAP | OTHER
+//   FrictionLevel     : RED | AMBER | GREEN
+//   AIFit             : YES | INVESTIGATE | NO
+//   BlockerStatus     : OPEN | IN_PROGRESS | RESOLVED | DEFERRED
+//   AIClassification  : QUICK_WIN | STRATEGIC_BET | MONITOR | DEFER
+//   ReportType        : CAMPAIGN_OVERVIEW | SCORE_SUMMARY | QUESTION_BREAKDOWN | OPEN_TEXT | VALIDATION | JOURNEY | REGISTRY | AI_FEASIBILITY
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Core ──────────────────────────────────────────────────────────────
+model Company {
+  id                  String   @id @default(cuid())
+  name                String
+  industry            String?
+  website             String?
+  contactEmail        String?
+  status              String   @default("ACTIVE")
+  allowNamedReporting Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  teams          Team[]
+  users          User[]
+  questionnaires Questionnaire[]
+  campaigns      SurveyCampaign[]
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  description String?
+  managerName String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invites     SurveyInvite[]
+  submissions Submission[]
+  journeys    JourneyMapSession[]
+
+  @@index([companyId])
+}
+
+model User {
+  id             String   @id @default(cuid())
+  companyId      String?
+  name           String
+  email          String   @unique
+  role           String
+  passwordHash   String?
+  externalAuthId String?
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, role])
+}
+
+// ─── Questionnaire ─────────────────────────────────────────────────────
+model Questionnaire {
+  id               String   @id @default(cuid())
+  companyId        String?
+  title            String
+  description      String?
+  version          Int      @default(1)
+  status           String   @default("DRAFT")
+  estimatedMinutes Int      @default(10)
+  isAnonymous      Boolean  @default(true)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company    Company?            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  dimensions QuestionDimension[]
+  questions  Question[]
+  campaigns  SurveyCampaign[]
+
+  @@index([companyId])
+}
+
+model QuestionDimension {
+  id              String  @id @default(cuid())
+  questionnaireId String
+  code            String
+  name            String
+  description     String?
+  displayOrder    Int     @default(0)
+  color           String?
+
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  questions     Question[]
+
+  @@unique([questionnaireId, code])
+}
+
+model Question {
+  id              String   @id @default(cuid())
+  questionnaireId String
+  dimensionId     String
+  questionNumber  Int
+  questionText    String
+  questionType    String   @default("LIKERT")
+  blockerSignal   String?
+  isReverseScored Boolean  @default(false)
+  isRequired      Boolean  @default(true)
+  minScale        Int?
+  maxScale        Int?
+  lowLabel        String?
+  highLabel       String?
+  tooltipText     String?
+  displayOrder    Int      @default(0)
+  status          String   @default("ACTIVE")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  questionnaire Questionnaire     @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  dimension     QuestionDimension @relation(fields: [dimensionId], references: [id], onDelete: Cascade)
+  options       QuestionOption[]
+  answers       Answer[]
+
+  @@unique([questionnaireId, questionNumber])
+  @@index([dimensionId])
+}
+
+model QuestionOption {
+  id           String @id @default(cuid())
+  questionId   String
+  label        String
+  value        String
+  displayOrder Int    @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// ─── Campaign & participation ──────────────────────────────────────────
+model SurveyCampaign {
+  id                String    @id @default(cuid())
+  companyId         String
+  questionnaireId   String
+  title             String
+  cycle             String?
+  startDate         DateTime?
+  closeDate         DateTime?
+  targetRespondents Int?
+  status            String    @default("DRAFT")
+  createdById       String?
+  notes             String?
+  assessmentLead    String?
+  vpEmail           String?
+  previousCycleLabel String?
+  previousS         Float?
+  previousP         Float?
+  previousA         Float?
+  previousC         Float?
+  previousE         Float?
+  execSummarySubject   String?
+  execSummaryFindings  String?
+  execSummaryNextSteps String?
+  execSummaryImmediate String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  questionnaire  Questionnaire       @relation(fields: [questionnaireId], references: [id])
+  invites        SurveyInvite[]
+  submissions    Submission[]
+  scoreSummaries ScoreSummary[]
+  openTextThemes OpenTextTheme[]
+  validations    ValidationSignal[]
+  journeys       JourneyMapSession[]
+  blockers       Blocker[]
+  reports        Report[]
+
+  @@index([companyId, status])
+}
+
+model SurveyInvite {
+  id               String    @id @default(cuid())
+  campaignId       String
+  participantEmail String?
+  participantName  String?
+  teamId           String?
+  roleLabel        String?
+  uniqueToken      String    @unique
+  sentAt           DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  status           String    @default("SENT")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  campaign    SurveyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  team        Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  submissions Submission[]
+
+  @@index([campaignId, status])
+}
+
+model Submission {
+  id                      String    @id @default(cuid())
+  campaignId              String
+  questionnaireId         String
+  inviteId                String?
+  anonymousParticipantKey String
+  participantName         String?
+  teamId                  String?
+  roleLabel               String?
+  yearsAtCompany          String?
+  primaryTechnology       String?
+  submittedAt             DateTime?
+  status                  String    @default("IN_PROGRESS")
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  campaign SurveyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  invite   SurveyInvite?  @relation(fields: [inviteId], references: [id], onDelete: SetNull)
+  team     Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  answers  Answer[]
+
+  @@index([campaignId, status])
+}
+
+model Answer {
+  id           String  @id @default(cuid())
+  submissionId String
+  questionId   String
+  rawValue     String?
+  numericValue Float?
+  scoredValue  Float?
+  textValue    String?
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  question   Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  themeTags  OpenTextThemeTag[]
+
+  @@unique([submissionId, questionId])
+  @@index([questionId])
+}
+
+// ─── Scoring & analysis artefacts ──────────────────────────────────────
+model ScoreSummary {
+  id              String   @id @default(cuid())
+  campaignId      String
+  dimensionCode   String
+  dimensionName   String
+  averageScore    Float?
+  responseCount   Int      @default(0)
+  scoreBand       String?
+  priorityLevel   String   @default("MONITOR")
+  trendDelta      Float?
+  trendOverridden Boolean  @default(false)
+  computedAt      DateTime @default(now())
+
+  campaign SurveyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, dimensionCode])
+}
+
+model OpenTextTheme {
+  id                  String   @id @default(cuid())
+  campaignId          String
+  sourceQuestionId    String?
+  themeName           String
+  description         String?
+  respondentCount     Int      @default(0)
+  percentage          Float    @default(0)
+  status              String   @default("MONITOR")
+  representativeQuote String?
+  jtbdStatement       String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  campaign SurveyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tags     OpenTextThemeTag[]
+}
+
+model OpenTextThemeTag {
+  id        String   @id @default(cuid())
+  themeId   String
+  answerId  String
+  createdAt DateTime @default(now())
+
+  theme  OpenTextTheme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  answer Answer        @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([themeId, answerId])
+  @@index([answerId])
+}
+
+model ValidationSignal {
+  id                  String   @id @default(cuid())
+  campaignId          String
+  blockerId           String?
+  signalType          String
+  signalName          String
+  evidenceValue       String?
+  evidenceDescription String?
+  confirmed           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  campaign SurveyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  blocker  Blocker?       @relation(fields: [blockerId], references: [id], onDelete: SetNull)
+}
+
+model JourneyMapSession {
+  id               String    @id @default(cuid())
+  campaignId       String
+  teamId           String?
+  facilitator      String?
+  sessionDate      DateTime?
+  participantCount Int       @default(0)
+  notes            String?
+  createdAt        DateTime  @default(now())
+
+  campaign SurveyCampaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  team     Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  steps    JourneyMapStep[]
+}
+
+model JourneyMapStep {
+  id            String  @id @default(cuid())
+  sessionId     String
+  stepName      String
+  description   String?
+  timeSpent     String?
+  frictionLevel String  @default("GREEN")
+  dotVotes      Int     @default(0)
+  quote         String?
+  rootCause     String?
+  jtbdStatement String?
+  displayOrder  Int     @default(0)
+
+  session JourneyMapSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model Blocker {
+  id                 String   @id @default(cuid())
+  campaignId         String
+  title              String
+  description        String?
+  sourcePhase        String?
+  dimensionCode      String?
+  sdlcPhase          String?
+  severity           String   @default("P3")
+  affectedTeams      String?
+  reachPercentage    Float?
+  estimatedHoursLost Float?
+  evidenceSummary    String?
+  aiFit              String   @default("INVESTIGATE")
+  status             String   @default("OPEN")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  campaign    SurveyCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  feasibility AIFeasibilityScore?
+  signals     ValidationSignal[]
+}
+
+model AIFeasibilityScore {
+  id                     String   @id @default(cuid())
+  blockerId              String   @unique
+  toolMaturityScore      Float
+  integrationEaseScore   Float
+  costEfficiencyScore    Float
+  dataAvailabilityScore  Float
+  developerAdoptionScore Float
+  weightedCompositeScore Float
+  classification         String
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  blocker Blocker @relation(fields: [blockerId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id            String   @id @default(cuid())
+  campaignId    String
+  reportType    String
+  title         String
+  generatedAt   DateTime @default(now())
+  generatedById String?
+  fileUrl       String?
+  contentJson   String?
+
+  campaign SurveyCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actorRole   String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+}

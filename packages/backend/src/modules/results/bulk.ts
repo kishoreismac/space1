@@ -13,6 +13,7 @@
  * submission given averaged dimension scores (S/P/A/C/E) — used by the
  * Phase 1 triage "no survey, just paste my numbers" workflow.
  */
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z, ZodError } from 'zod';
 import type { Prisma } from '@prisma/client';
@@ -259,7 +260,7 @@ bulkUploadRouter.post(
           data: {
             campaignId,
             questionnaireId: campaign.questionnaireId,
-            anonymousParticipantKey: `bulk-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+            anonymousParticipantKey: `bulk-${Date.now()}-${i}-${randomUUID().slice(0, 8)}`,
             teamId,
             roleLabel: r.role,
             yearsAtCompany: r.years,

@@ -12,6 +12,7 @@ import {
 import { HttpError } from '../../middleware/error.js';
 import { prisma } from '../../prisma/client.js';
 import { assertCompanyAccess, requireAuth, requireRole } from '../auth/middleware.js';
+import { trySaveArtifact } from '../../lib/storage.js';
 
 export const resultsRouter = Router({ mergeParams: true });
 resultsRouter.use(requireAuth);
@@ -361,6 +362,91 @@ resultsRouter.get('/open-text', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ─── GET participant submissions (list + detail) ───────────────────────
+resultsRouter.get('/submissions', async (req, res, next) => {
+  try {
+    const { companyId, campaignId } = req.params as { companyId: string; campaignId: string };
+    assertCompanyAccess(req.auth, companyId);
+    await loadCampaign(companyId, campaignId);
+    const rows = await prisma.submission.findMany({
+      where: { campaignId, status: 'COMPLETED' },
+      orderBy: { submittedAt: 'desc' },
+      include: {
+        team: { select: { id: true, name: true } },
+        _count: { select: { answers: true } },
+      },
+    });
+    res.json({
+      items: rows.map((s) => ({
+        id: s.id,
+        participantName: s.participantName,
+        roleLabel: s.roleLabel,
+        teamId: s.teamId,
+        teamName: s.team?.name ?? null,
+        yearsAtCompany: s.yearsAtCompany,
+        primaryTechnology: s.primaryTechnology,
+        submittedAt: s.submittedAt,
+        answerCount: s._count.answers,
+      })),
+    });
+  } catch (e) { next(e); }
+});
+
+resultsRouter.get('/submissions/:submissionId', async (req, res, next) => {
+  try {
+    const { companyId, campaignId, submissionId } = req.params as {
+      companyId: string;
+      campaignId: string;
+      submissionId: string;
+    };
+    assertCompanyAccess(req.auth, companyId);
+    await loadCampaign(companyId, campaignId);
+    const sub = await prisma.submission.findFirst({
+      where: { id: submissionId, campaignId },
+      include: {
+        team: { select: { id: true, name: true } },
+        answers: {
+          include: {
+            question: {
+              select: {
+                questionNumber: true,
+                questionText: true,
+                questionType: true,
+                isReverseScored: true,
+                dimension: { select: { code: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!sub) throw new HttpError(404, 'Submission not found');
+    res.json({
+      id: sub.id,
+      participantName: sub.participantName,
+      roleLabel: sub.roleLabel,
+      teamId: sub.teamId,
+      teamName: sub.team?.name ?? null,
+      yearsAtCompany: sub.yearsAtCompany,
+      primaryTechnology: sub.primaryTechnology,
+      submittedAt: sub.submittedAt,
+      answers: sub.answers
+        .map((a) => ({
+          questionNumber: a.question.questionNumber,
+          questionText: a.question.questionText,
+          questionType: a.question.questionType,
+          dimensionCode: a.question.dimension.code,
+          dimensionName: a.question.dimension.name,
+          isReverseScored: a.question.isReverseScored,
+          rawValue: a.numericValue,
+          scoredValue: a.scoredValue,
+          textValue: a.textValue,
+        }))
+        .sort((a, b) => a.questionNumber - b.questionNumber),
+    });
+  } catch (e) { next(e); }
+});
+
 // ─── POST persist score summary snapshot ───────────────────────────────
 resultsRouter.post(
   '/snapshot',
@@ -414,6 +500,13 @@ resultsRouter.post(
       const summaries = await prisma.scoreSummary.findMany({
         where: { campaignId },
         orderBy: { dimensionCode: 'asc' },
+      });
+      // Best-effort mirror to Azure Blob Storage for long-term artifact retention
+      await trySaveArtifact('snapshots', companyId, campaignId, {
+        snapshotAt: now.toISOString(),
+        savedBy: req.auth?.sub ?? null,
+        summaries,
+        dimensions: dims,
       });
       res.json({ snapshotAt: now.toISOString(), summaries });
     } catch (e) { next(e); }

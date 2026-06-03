@@ -10,6 +10,7 @@ import { HttpError } from '../../middleware/error.js';
 import { prisma } from '../../prisma/client.js';
 import { recordAudit } from '../../lib/audit.js';
 import { assertCompanyAccess, requireAuth, requireRole } from '../auth/middleware.js';
+import { trySaveArtifact } from '../../lib/storage.js';
 
 export const campaignsRouter = Router({ mergeParams: true });
 campaignsRouter.use(requireAuth);
@@ -154,6 +155,27 @@ campaignsRouter.patch(
         recordAudit(req, `campaign.status.${body.status.toLowerCase()}`, 'SurveyCampaign', updated.id);
       } else {
         recordAudit(req, 'campaign.update', 'SurveyCampaign', updated.id);
+      }
+      // If executive summary fields were edited, mirror to Azure Blob Storage
+      const execTouched =
+        body.execSummarySubject !== undefined ||
+        body.execSummaryFindings !== undefined ||
+        body.execSummaryNextSteps !== undefined ||
+        body.execSummaryImmediate !== undefined ||
+        body.vpEmail !== undefined;
+      if (execTouched) {
+        await trySaveArtifact('executive-summaries', companyId, campaignId, {
+          campaignId,
+          cycle: updated.cycle,
+          title: updated.title,
+          vpEmail: updated.vpEmail,
+          execSummarySubject: updated.execSummarySubject,
+          execSummaryFindings: updated.execSummaryFindings,
+          execSummaryNextSteps: updated.execSummaryNextSteps,
+          execSummaryImmediate: updated.execSummaryImmediate,
+          savedBy: req.auth?.sub ?? null,
+          savedAt: new Date().toISOString(),
+        });
       }
       res.json(updated);
     } catch (e) {

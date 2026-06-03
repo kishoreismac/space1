@@ -21,6 +21,7 @@ import { exportRouter } from './modules/export/router.js';
 import { dashboardRouter } from './modules/dashboard/router.js';
 import { auditRouter } from './modules/audit/router.js';
 import { usersRouter } from './modules/users/router.js';
+import { artifactsRouter } from './modules/artifacts/router.js';
 
 export function createApp() {
   const app = express();
@@ -45,6 +46,7 @@ export function createApp() {
   app.use('/api/companies/:companyId/campaigns/:campaignId/feasibility', feasibilityRouter);
   app.use('/api/companies/:companyId/campaigns/:campaignId/report', reportRouter);
   app.use('/api/companies/:companyId/campaigns/:campaignId/export', exportRouter);
+  app.use('/api/companies/:companyId/campaigns/:campaignId/artifacts', artifactsRouter);
   app.use('/api/companies/:companyId/dashboard', dashboardRouter);
   app.use('/api/audit', auditRouter);
   app.use('/api/users', usersRouter);

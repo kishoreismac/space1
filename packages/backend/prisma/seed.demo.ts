@@ -101,15 +101,40 @@ async function main() {
     },
   });
 
-  // 5) Synthesise 38 respondents
+  // 5) Synthesise 38 respondents — fully deterministic, no Math.random().
+  //    Every (questionNumber, respondentIndex) pair maps to a stable answer,
+  //    and the per-question integer values are chosen via the largest-remainder
+  //    method so that the mean over RESPONDENTS exactly equals the target
+  //    (clamped to [1..5]). Result: re-running the seed produces identical data
+  //    AND the actual dimension averages computed from the submissions match
+  //    TARGET to within rounding.
   const dimOf = new Map<number, DimCode>(
     template.questions.map((q) => [q.questionNumber, q.dimension.code as DimCode]),
   );
   const byNum = new Map(template.questions.map((q) => [q.questionNumber, q]));
 
-  function sampleAround(target: number): number {
-    const noise = (Math.random() - 0.5) * 1.6;
-    return Math.max(1, Math.min(5, Math.round(target + noise)));
+  // 32-bit unsigned deterministic hash of two integers.
+  function hash2(a: number, b: number): number {
+    let h = (a | 0) ^ Math.imul(b | 0, 0x9e3779b1);
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  // Returns an array of n integer Likert values in [1..5] whose mean is the
+  // closest representable value to `target` (largest-remainder rounding).
+  // Assignment order is deterministic per questionNumber so values vary across
+  // respondents but are reproducible run-to-run.
+  function valuesForQuestion(target: number, n: number, qNum: number): number[] {
+    const clamped = Math.max(1, Math.min(5, target));
+    const totalSum = Math.round(clamped * n);
+    const base = Math.floor(totalSum / n);
+    const extras = totalSum - base * n;
+    const indices = Array.from({ length: n }, (_, i) => i);
+    indices.sort((a, b) => hash2(a, qNum) - hash2(b, qNum));
+    const out = new Array<number>(n).fill(base);
+    for (let k = 0; k < extras; k++) out[indices[k]!] = base + 1;
+    return out;
   }
 
   const openSeeds: Record<number, string[]> = {
@@ -142,6 +167,17 @@ async function main() {
   const tenures = ['< 1', '1-3', '3-5', '5-10', '10+'];
   const stacks = ['TypeScript', 'Python', 'Go', 'Java'];
 
+  // Pre-compute deterministic per-respondent scored values for every Likert
+  // question so the dimension mean over all submissions matches TARGET.
+  const scoredByQ = new Map<number, number[]>();
+  for (const [num, code] of dimOf.entries()) {
+    const q = byNum.get(num)!;
+    if (q.questionType === 'OPEN_TEXT') continue;
+    let target = TARGET[code];
+    if (num === 7) target = Math.max(target, 2.7); // keep psych-safety gate green
+    scoredByQ.set(num, valuesForQuestion(target, RESPONDENTS, num));
+  }
+
   for (let i = 0; i < RESPONDENTS; i++) {
     const submission = await prisma.submission.create({
       data: {
@@ -165,12 +201,13 @@ async function main() {
       textValue: string | null;
     }> = [];
 
-    for (const [num, code] of dimOf.entries()) {
+    for (const [num] of dimOf.entries()) {
       const q = byNum.get(num)!;
       if (q.questionType === 'OPEN_TEXT') {
         const seeds = openSeeds[num] ?? [];
         if (seeds.length === 0) continue;
-        if (Math.random() < 0.4) {
+        // Deterministic ~40% inclusion: include when hash%10 < 4.
+        if (hash2(i, num) % 10 < 4) {
           answers.push({
             submissionId: submission.id,
             questionId: q.id,
@@ -182,11 +219,9 @@ async function main() {
         continue;
       }
 
-      let target = TARGET[code];
-      if (num === 7) target = Math.max(target, 2.7); // keep psych-safety gate green
       const min = q.minScale ?? 1;
       const max = q.maxScale ?? 5;
-      const scored = sampleAround(target);
+      const scored = scoredByQ.get(num)![i]!;
       const raw = q.isReverseScored ? max + min - scored : scored;
       answers.push({
         submissionId: submission.id,

@@ -18,6 +18,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.31.0",
     "@prisma/client": "^5.18.0",
     "@space/shared": "*",
     "bcryptjs": "^2.4.3",

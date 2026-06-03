@@ -12,6 +12,7 @@ import { recordAudit } from '../../lib/audit.js';
 import { assertCompanyAccess, requireAuth, requireRole } from '../auth/middleware.js';
 import { classifyOpenTextAnswersWithFoundry, FoundryError } from './ai.js';
 import { clusterAnswers } from './cluster.js';
+import { trySaveArtifact } from '../../lib/storage.js';
 
 export const themesRouter = Router({ mergeParams: true });
 themesRouter.use(requireAuth);
@@ -666,6 +667,9 @@ themesRouter.post(
 
       const replace = req.body?.replace === true;
       const minSize = typeof req.body?.minSize === 'number' ? Math.max(2, req.body.minSize) : 2;
+      // Incremental by default: only analyse answers that have NOT been tagged yet.
+      // Pass { incremental: false } to re-analyse every answer (legacy behaviour).
+      const incremental = req.body?.incremental !== false && !replace;
 
       // Pull every completed open-text answer for this campaign
       const answers = await prisma.answer.findMany({
@@ -676,6 +680,7 @@ themesRouter.post(
             questionType: 'OPEN_TEXT',
           },
           NOT: { textValue: null },
+          ...(incremental ? { themeTags: { none: {} } } : {}),
         },
         select: { id: true, textValue: true },
       });
@@ -684,7 +689,16 @@ themesRouter.post(
         .map((a) => ({ id: a.id, text: a.textValue as string }));
 
       if (inputs.length === 0) {
-        return res.json({ created: 0, updated: 0, totalTagged: 0, themes: [] });
+        return res.json({
+          created: 0,
+          updated: 0,
+          totalTagged: 0,
+          themes: [],
+          incremental,
+          note: incremental
+            ? 'No new untagged answers to analyse.'
+            : 'No open-text answers available.',
+        });
       }
 
       const clusters = clusterAnswers(inputs, { minSize });
@@ -769,7 +783,29 @@ themesRouter.post(
         created, updated, totalTagged, clusters: clusters.length, totalRespondents,
       });
 
-      res.json({ created, updated, totalTagged, totalRespondents, themes: summaryThemes });
+      // Mirror themes snapshot to Azure Blob Storage
+      await trySaveArtifact('themes', companyId, campaignId, {
+        generatedAt: new Date().toISOString(),
+        incremental,
+        replace,
+        created,
+        updated,
+        totalTagged,
+        totalRespondents,
+        themes: summaryThemes,
+      });
+      await trySaveArtifact('analysis-results', companyId, campaignId, {
+        kind: 'theme-auto-generate',
+        ranAt: new Date().toISOString(),
+        incremental,
+        inputCount: inputs.length,
+        clustersFound: clusters.length,
+        created,
+        updated,
+        totalTagged,
+      });
+
+      res.json({ created, updated, totalTagged, totalRespondents, themes: summaryThemes, incremental });
     } catch (e) { next(e); }
   },
 );

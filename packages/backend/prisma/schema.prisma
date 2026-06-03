@@ -23,7 +23,8 @@
 //   ReportType        : CAMPAIGN_OVERVIEW | SCORE_SUMMARY | QUESTION_BREAKDOWN | OPEN_TEXT | VALIDATION | JOURNEY | REGISTRY | AI_FEASIBILITY
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -230,6 +231,7 @@ model Submission {
   questionnaireId         String
   inviteId                String?
   anonymousParticipantKey String
+  participantName         String?
   teamId                  String?
   roleLabel               String?
   yearsAtCompany          String?

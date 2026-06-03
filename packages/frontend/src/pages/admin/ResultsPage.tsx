@@ -551,13 +551,13 @@ function ExecSummaryForm({
     mutationFn: () =>
       api(`/api/companies/${companyId}/campaigns/${campaignId}`, {
         method: 'PATCH',
-        body: JSON.stringify({
+        body: {
           vpEmail: to || null,
           execSummarySubject: subject || null,
           execSummaryFindings: findings || null,
           execSummaryNextSteps: nextSteps || null,
           execSummaryImmediate: immediate || null,
-        }),
+        },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaigns', companyId, campaignId, 'detail'] });

@@ -5,6 +5,7 @@ import { reverseScore, SubmissionPayloadSchema } from '@space/shared';
 import { HttpError } from '../../middleware/error.js';
 import { prisma } from '../../prisma/client.js';
 import { toPublicQuestionnaire } from '../questionnaires/service.js';
+import { trySaveArtifact } from '../../lib/storage.js';
 
 function makeToken(): string {
   return randomBytes(16).toString('base64url');
@@ -183,6 +184,7 @@ publicRouter.post('/survey/:token/submit', async (req, res, next) => {
           questionnaireId: invite.campaign.questionnaireId,
           inviteId: invite.id,
           anonymousParticipantKey: anonymousKey,
+          participantName: payload.participantName,
           teamId: payload.teamId ?? invite.teamId ?? null,
           roleLabel: payload.roleLabel ?? invite.roleLabel ?? null,
           yearsAtCompany: payload.yearsAtCompany ?? null,
@@ -201,6 +203,62 @@ publicRouter.post('/survey/:token/submit', async (req, res, next) => {
 
       return submission;
     });
+
+    // Mirror full participant submission to Azure Blob Storage (best-effort).
+    // Organized as: survey-responses/{companyId}/{campaignId}/{teamId|none}/{submissionId}.json
+    const teamSegment = (payload.teamId ?? invite.teamId ?? 'no-team').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const teamRecord = (payload.teamId ?? invite.teamId)
+      ? await prisma.team.findUnique({
+          where: { id: (payload.teamId ?? invite.teamId)! },
+          select: { name: true },
+        })
+      : null;
+    const blobPayload = {
+      submissionId: result.id,
+      submittedAt: result.submittedAt?.toISOString() ?? null,
+      campaign: {
+        id: invite.campaign.id,
+        title: invite.campaign.title,
+        cycle: invite.campaign.cycle,
+      },
+      company: {
+        id: invite.campaign.company.id,
+        name: invite.campaign.company.name,
+      },
+      participant: {
+        name: payload.participantName,
+        roleLabel: payload.roleLabel ?? invite.roleLabel ?? null,
+        teamId: payload.teamId ?? invite.teamId ?? null,
+        teamName: teamRecord?.name ?? null,
+        yearsAtCompany: payload.yearsAtCompany ?? null,
+        primaryTechnology: payload.primaryTechnology ?? null,
+        anonymousKey,
+      },
+      questionnaire: {
+        id: invite.campaign.questionnaire.id,
+        title: invite.campaign.questionnaire.title,
+        version: invite.campaign.questionnaire.version,
+      },
+      answers: payload.answers.map((a) => {
+        const q = byNumber.get(a.questionNumber);
+        return {
+          questionNumber: a.questionNumber,
+          questionText: q?.questionText ?? null,
+          dimensionCode: q?.dimension?.code ?? null,
+          type: q?.questionType ?? null,
+          rawValue: a.rawValue ?? null,
+          textValue: a.textValue ?? null,
+          isReverseScored: q?.isReverseScored ?? false,
+        };
+      }),
+    };
+    await trySaveArtifact(
+      'survey-responses',
+      invite.campaign.company.id,
+      invite.campaignId,
+      blobPayload,
+      { id: `${teamSegment}/${result.id}` },
+    );
 
     res.status(201).json({ submissionId: result.id, submittedAt: result.submittedAt });
   } catch (e) {

@@ -132,6 +132,7 @@ export const SubmissionAnswerSchema = z.object({
 export type SubmissionAnswerInput = z.infer<typeof SubmissionAnswerSchema>;
 
 export const SubmissionPayloadSchema = z.object({
+  participantName: z.string().min(1, 'Participant name is required').max(120),
   teamId: z.string().optional().nullable(),
   roleLabel: z.string().max(120).optional().nullable(),
   yearsAtCompany: z.string().max(60).optional().nullable(),

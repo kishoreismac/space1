@@ -54,6 +54,7 @@ export default function ThemesPage() {
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [misalignmentNotes, setMisalignmentNotes] = useState('');
   const [notesSaved, setNotesSaved] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const companies = useQuery({
@@ -86,6 +87,32 @@ export default function ThemesPage() {
       );
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['themes', campaignId] }),
+  });
+
+  const saveNotes = useMutation({
+    mutationFn: () => {
+      if (!companyId || !campaignId) {
+        return Promise.reject(new Error('Select a company and campaign first.'));
+      }
+      return api(
+        `/api/companies/${companyId}/campaigns/${campaignId}/artifacts/notes`,
+        {
+          method: 'POST',
+          body: {
+            kind: 'jtbd-misalignment',
+            misalignmentNotes,
+          },
+        },
+      );
+    },
+    onSuccess: () => {
+      setNotesSaved(true);
+      setNotesError(null);
+    },
+    onError: (e) => {
+      setNotesSaved(false);
+      setNotesError(e instanceof Error ? e.message : 'Failed to save notes.');
+    },
   });
 
   return (
@@ -174,15 +201,21 @@ export default function ThemesPage() {
                   rows={3}
                   placeholder="e.g. 'On-call rotation burden' appeared in 35% of Q40 responses but C dimension scored 3.4 (moderate/healthy). This suggests Q39 (on-call rotation question) is under-scoring the actual severity. Flag for Phase 3 DORA/incident data pull."
                   value={misalignmentNotes}
-                  onChange={e => { setMisalignmentNotes(e.target.value); setNotesSaved(false); }}
+                  onChange={e => { setMisalignmentNotes(e.target.value); setNotesSaved(false); setNotesError(null); }}
                 />
                 <button
-                  className="btn btn-outline border border-slate-200 bg-white text-slate-900 hover:bg-slate-100 font-semibold px-4 py-2 rounded"
-                  onClick={() => setNotesSaved(true)}
+                  className="btn btn-outline border border-slate-200 bg-white text-slate-900 hover:bg-slate-100 font-semibold px-4 py-2 rounded disabled:opacity-50"
+                  onClick={() => saveNotes.mutate()}
+                  disabled={saveNotes.isPending || !misalignmentNotes.trim()}
                 >
-                  Save Notes
+                  {saveNotes.isPending ? 'Saving…' : 'Save Notes'}
                 </button>
-                {notesSaved && <span className="ml-3 text-green-600 text-xs font-semibold">Notes saved!</span>}
+                {notesSaved && !saveNotes.isPending && (
+                  <span className="ml-3 text-green-600 text-xs font-semibold">✓ Notes saved to Azure Storage</span>
+                )}
+                {notesError && (
+                  <span className="ml-3 text-red-600 text-xs font-semibold">{notesError}</span>
+                )}
               </div>
             </ActivityBlock>
           </div>
@@ -656,7 +689,10 @@ function AnswersPanel({
             <li key={answer.answerId} className="py-3 text-sm flex items-start gap-3">
               <div className="flex-1">
                 <div className="text-[11px] uppercase text-slate-400">
-                  Q{answer.questionNumber} - {answer.roleLabel ?? 'unattributed'}
+                  Q{answer.questionNumber} - {answer.questionText}
+                  {answer.roleLabel && (
+                    <span className="ml-2 normal-case text-slate-400 italic">({answer.roleLabel})</span>
+                  )}
                   {'themes' in answer && answer.themes.length > 0 && (
                     <span className="ml-2 text-slate-500">
                       already in: {answer.themes.map((theme) => theme.themeName).join(', ')}

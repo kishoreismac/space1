@@ -3,6 +3,7 @@ import AdminLayout from './layouts/AdminLayout';
 import PublicLayout from './layouts/PublicLayout';
 import { RequireAuth } from './components/RequireAuth';
 import AdminHome from './pages/admin/AdminHome';
+import DashboardPage from './pages/admin/DashboardPage';
 import SetupPage from './pages/admin/SetupPage';
 import SurveyPage from './pages/admin/SurveyPage';
 import ResultsPage from './pages/admin/ResultsPage';
@@ -40,6 +41,7 @@ export default function App() {
         }
       >
         <Route index element={<AdminHome />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="setup" element={<SetupPage />} />
         <Route path="survey" element={<SurveyPage />} />
         <Route path="p1" element={<ResultsPage />} />
