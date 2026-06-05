@@ -4,12 +4,14 @@ type Scores = Record<DimensionCode, number | null>;
 type Rule = Omit<CrossPatternAlert, 'code' | 'message'> & {
   patternId: string;
   crossPattern: string;
+  trigger: string;
   matches: (scores: Scores) => boolean;
 };
 
 const low = (v: number | null): boolean => v !== null && v <= 3.0;
-const high = (v: number | null): boolean => v !== null && v > 3.5;
-const healthyOrBetter = (v: number | null): boolean => v !== null && v >= 3.0;
+const high = (v: number | null): boolean => v !== null && v >= 3.5;
+const moderate = (v: number | null): boolean => v !== null && v > 3.0 && v < 3.5;
+const moderateOrHigh = (v: number | null): boolean => moderate(v) || high(v);
 const weakCount = (scores: Scores): number =>
   (Object.values(scores) as Array<number | null>).filter(low).length;
 
@@ -62,14 +64,14 @@ const CROSS_PATTERN_RULES: Rule[] = [
 
   rule('C-E-01', 'Low Communication + Low Efficiency', 'C < 3.0 and E < 3.0', 'Developers cannot find answers or get unblocked efficiently', 'Knowledge and workflow systems are fragmented', 'Developers lose time searching, asking, waiting, or escalating', 'Tribal knowledge, poor documentation, unclear owners, fragmented tools', 'Documentation search time, onboarding time, repeated questions, ownership gaps', 'Build knowledge systems, ownership maps, and RAG-style engineering assistant', 'CRITICAL', ({ C, E }) => low(C) && low(E)),
   rule('C-P-01', 'Low Communication + Low Performance', 'C < 3.0 and P < 3.0', 'Poor collaboration is weakening delivery', 'Communication problems are creating performance problems', 'Delivery quality is being hurt by unclear inputs and slow feedback', 'Requirement ambiguity, poor handoffs, delayed PR reviews, dependency friction', 'Requirement churn, review delay, rework rate, blocked dependencies', 'Fix planning, acceptance criteria, handoffs, and review discipline', 'CRITICAL', ({ C, P }) => low(C) && low(P)),
-  rule('C-S-01', 'Low Communication + Low Satisfaction', 'C < 3.0 and S < 3.0', 'Poor communication is hurting morale', 'Developers may feel unclear, unsupported, or unheard', 'Weak feedback, unclear priorities, low trust, poor manager communication', 'Open-text themes, team sentiment, manager feedback, psychological safety indicators', 'Strengthen communication norms and psychological safety', 'CRITICAL', ({ C, S }) => low(C) && low(S)),
+  rule('C-S-01', 'Low Communication + Low Satisfaction', 'C < 3.0 and S < 3.0', 'Poor communication is hurting morale', 'Poor communication is hurting morale', 'Developers may feel unclear, unsupported, or unheard', 'Weak feedback, unclear priorities, low trust, poor manager communication', 'Open-text themes, team sentiment, manager feedback, psychological safety indicators', 'Strengthen communication norms and psychological safety', 'CRITICAL', ({ C, S }) => low(C) && low(S)),
   rule('C-A-01', 'Low Communication + High Activity', 'C < 3.0 and A > 3.5', 'Teams are active but correcting misunderstandings', 'Rework and repeated alignment are inflating activity', 'More work is happening because clarity is missing', 'Duplicate work, repeated clarification, meeting overload, unclear ownership', 'Meeting hours, reopened tickets, clarification threads, dependency escalations', 'Reduce ambiguity and improve operating rhythm', 'WARNING', ({ C, A }) => low(C) && high(A)),
   rule('C-P-02', 'Healthy Communication + Low Performance', 'C > 3.5 and P < 3.0', 'Collaboration seems healthy but outcomes are weak', 'The issue may be technical or process-related, not communication-related', 'Teams communicate well, but engineering systems or quality practices may be weak', 'Technical debt, skill gaps, poor automation, weak testing, tooling limitations', 'Defects, hotfixes, test coverage, build failures, technical debt backlog', 'Investigate technical delivery systems and quality practices', 'WARNING', ({ C, P }) => high(C) && low(P)),
 
   rule('E-S-01', 'Low Efficiency + Low Satisfaction', 'E < 3.0 and S < 3.0', 'Inefficient systems are frustrating developers', 'Toolchain friction is damaging developer experience', 'Developers are spending too much energy fighting the system', 'Slow pipelines, flaky tests, poor local setup, poor docs, repetitive work', 'Build time, flaky test data, environment tickets, docs search time, survey comments', 'Prioritize platform, tooling, and developer experience improvements', 'CRITICAL', ({ E, S }) => low(E) && low(S)),
   rule('E-P-01', 'Low Efficiency + Low Performance', 'E < 3.0 and P < 3.0', 'Inefficiency is damaging delivery outcomes', 'Delivery quality is being constrained by weak systems', 'Toolchain, testing, deployment, or automation gaps are hurting output', 'Unstable CI/CD, manual deployment, test unreliability, release friction', 'DORA metrics, build failures, hotfixes, deployment failures, escaped defects', 'Improve engineering platform reliability and automation', 'CRITICAL', ({ E, P }) => low(E) && low(P)),
   rule('E-A-01', 'Low Efficiency + High Activity', 'E < 3.0 and A > 3.5', 'Developers are working hard but wasting effort', 'Automation opportunity is likely high', 'High effort is being consumed by low-value or repetitive work', 'Manual tasks, repeated errors, waiting, duplicate work, poor integration', 'Manual effort hours, retry rate, queue time, duplicate tickets', 'Target AI automation and workflow redesign', 'WARNING', ({ E, A }) => low(E) && high(A)),
-  rule('E-C-01', 'Low Efficiency + Low Communication', 'E < 3.0 and C < 3.0', 'Knowledge and workflow systems are fragmented', 'Developers cannot move efficiently because information is hard to access', 'Poor docs, unclear ownership, missing decision history, tribal knowledge', 'Search logs, onboarding feedback, repeated questions, unresolved blockers', 'Build engineering knowledge base, ownership directory, and AI knowledge assistant', 'CRITICAL', ({ E, C }) => low(E) && low(C)),
+  rule('E-C-01', 'Low Efficiency + Low Communication', 'E < 3.0 and C < 3.0', 'Knowledge and workflow systems are fragmented', 'Knowledge and workflow systems are fragmented', 'Developers cannot move efficiently because information is hard to access', 'Poor docs, unclear ownership, missing decision history, tribal knowledge', 'Search logs, onboarding feedback, repeated questions, unresolved blockers', 'Build engineering knowledge base, ownership directory, and AI knowledge assistant', 'CRITICAL', ({ E, C }) => low(E) && low(C)),
   rule('E-P-02', 'Low Efficiency + Healthy Performance', 'E < 3.0 and P > 3.5', 'Teams deliver despite inefficient systems', 'Heroics and workarounds are hiding system weakness', 'Performance is currently protected by extra human effort', 'Overtime, manual fixes, senior engineer dependency, repeated workarounds', 'Workload data, manual task logs, key-person dependency, after-hours activity', 'Remove friction before performance becomes unsustainable', 'WARNING', ({ E, P }) => low(E) && high(P)),
 
   rule('M-01', 'Hidden Toil Pattern', 'A > 3.5, E < 3.0, S < 3.0', 'High activity, low efficiency, low satisfaction', 'Developers are busy, inefficient, and frustrated', 'Work is happening, but it requires too much human effort', 'Manual toil, poor automation, pipeline friction, repetitive work', 'Manual task hours, pipeline delays, repeated errors, open-text frustration', 'Launch toil-reduction and automation initiative', 'CRITICAL', ({ A, E, S }) => high(A) && low(E) && low(S)),
@@ -77,8 +79,8 @@ const CROSS_PATTERN_RULES: Rule[] = [
   rule('M-03', 'Rework Pattern', 'P < 3.0, C < 3.0, A > 3.5', 'Low performance, low communication, high activity', 'Teams are busy because they are correcting avoidable mistakes', 'Activity is inflated by rework, not value creation', 'Unclear requirements, weak handoffs, poor review loops', 'Reopened tickets, PR rework, requirement churn, defect leakage', 'Improve requirements quality, handoffs, and review discipline', 'CRITICAL', ({ P, C, A }) => low(P) && low(C) && high(A)),
   rule('M-04', 'Toolchain Drag Pattern', 'E < 3.0, P < 3.0, S < 3.0', 'Low efficiency, low performance, low satisfaction', 'Tools and delivery systems are hurting morale and outcomes', 'Engineering infrastructure is blocking productivity', 'Slow CI/CD, flaky tests, unstable environments, poor automation', 'CI/CD failures, build wait time, defect data, environment issues', 'Prioritize engineering platform modernization', 'CRITICAL', ({ E, P, S }) => low(E) && low(P) && low(S)),
   rule('M-05', 'Knowledge Fragmentation Pattern', 'C < 3.0, E < 3.0, A < 3.5', 'Low communication, low efficiency, moderate/low activity', 'Developers cannot find answers or move smoothly', 'Knowledge access is slowing delivery flow', 'Tribal knowledge, missing docs, unclear ownership, poor onboarding', 'Search time, onboarding duration, repeated questions, dependency escalations', 'Build RAG knowledge assistant, ownership map, and decision repository', 'CRITICAL', ({ C, E, A }) => low(C) && low(E) && A !== null && A < 3.5),
-  rule('M-06', 'Burnout Risk Pattern', 'S < 3.0, A > 3.5, P >= 3.0', 'Low satisfaction, high activity, moderate/healthy performance', 'Teams are delivering under pressure', 'Delivery may be sustainable only in the short term', 'Overload, meetings, after-hours work, high expectations', 'Calendar load, overtime, sprint spillover, sentiment comments', 'Reduce load, improve focus time, and monitor retention risk', 'CRITICAL', ({ S, A, P }) => low(S) && high(A) && healthyOrBetter(P)),
-  rule('M-07', 'Coordination Overhead Pattern', 'C < 3.0, A > 3.5, P >= 3.0', 'Low communication, high activity, moderate performance', 'Teams are active but coordination is expensive', 'Productivity is being consumed by alignment effort', 'Excess meetings, dependency friction, unclear decision rights', 'Meeting hours, dependency delays, repeated clarification, blocked tickets', 'Redesign operating model and reduce coordination waste', 'WARNING', ({ C, A, P }) => low(C) && high(A) && healthyOrBetter(P)),
+  rule('M-06', 'Burnout Risk Pattern', 'S <= 3.0, A >= 3.5, P > 3.0', 'Low satisfaction, high activity, moderate/high performance', 'Teams are delivering under pressure', 'Delivery may be sustainable only in the short term', 'Overload, meetings, after-hours work, high expectations', 'Calendar load, overtime, sprint spillover, sentiment comments', 'Reduce load, improve focus time, and monitor retention risk', 'CRITICAL', ({ S, A, P }) => low(S) && high(A) && moderateOrHigh(P)),
+  rule('M-07', 'Coordination Overhead Pattern', 'C <= 3.0, A >= 3.5, P > 3.0', 'Low communication, high activity, moderate/high performance', 'Teams are active but coordination is expensive', 'Productivity is being consumed by alignment effort', 'Excess meetings, dependency friction, unclear decision rights', 'Meeting hours, dependency delays, repeated clarification, blocked tickets', 'Redesign operating model and reduce coordination waste', 'WARNING', ({ C, A, P }) => low(C) && high(A) && moderateOrHigh(P)),
   rule('M-08', 'Low Flow Pattern', 'A < 3.0, E < 3.0, C < 3.0', 'Low activity, low efficiency, low communication', 'Developers are stuck or waiting', 'Work is not flowing through the system', 'Waiting states, slow decisions, poor tooling, blocked dependencies', 'Blocked ticket age, approval delays, pipeline wait time, unresolved questions', 'Diagnose flow blockers and create escalation paths', 'CRITICAL', ({ A, E, C }) => low(A) && low(E) && low(C)),
   rule('M-09', 'Quality Risk Pattern', 'P < 3.0, E < 3.0, C < 3.0', 'Low performance, low efficiency, low communication', 'Delivery quality is structurally at risk', 'Poor systems and poor collaboration are increasing defect and delay risk', 'Weak testing, unclear requirements, poor deployment process, communication gaps', 'Escaped defects, hotfixes, deployment failures, rework rate', 'Treat as high-priority quality and delivery risk', 'CRITICAL', ({ P, E, C }) => low(P) && low(E) && low(C)),
   rule('M-10', 'False Productivity Pattern', 'A > 3.5 and any of S/P/C/E < 3.0', 'High activity with at least one weak dimension', 'Activity may be hiding productivity problems', 'Busyness is being mistaken for productivity', 'Activity-based management, rework, manual toil, lack of outcome metrics', 'Ticket volume vs outcome value, rework, developer comments, cycle time', 'Stop using activity alone as productivity evidence', 'WARNING', ({ A, S, P, C, E }) => high(A) && [S, P, C, E].some(low)),
@@ -93,11 +95,34 @@ const CROSS_PATTERN_RULES: Rule[] = [
   rule('M-15', 'Silent Risk Pattern', 'S < 3.0, P >= 3.5, A >= 3.5', 'Low satisfaction with healthy performance and activity', 'Developers are producing but emotionally disengaged', 'Attrition or burnout risk may appear later', 'Hidden pressure, lack of recognition, repeated toil, poor growth support', 'Sentiment comments, attrition indicators, workload data, manager feedback', 'Act before morale issues become retention or performance problems', 'WARNING', ({ S, P, A }) => low(S) && P !== null && P >= 3.5 && A !== null && A >= 3.5),
 ];
 
+const DUPLICATE_PATTERN_GROUPS: Record<string, string> = {
+  'S-A-01': 'S-low_A-high',
+  'A-S-01': 'S-low_A-high',
+  'S-C-01': 'S-low_C-low',
+  'C-S-01': 'S-low_C-low',
+  'S-E-01': 'S-low_E-low',
+  'E-S-01': 'S-low_E-low',
+  'P-A-01': 'P-low_A-high',
+  'A-P-01': 'P-low_A-high',
+  'P-C-01': 'P-low_C-low',
+  'C-P-01': 'P-low_C-low',
+  'P-E-01': 'P-low_E-low',
+  'E-P-01': 'P-low_E-low',
+  'P-E-02': 'P-high_E-low',
+  'E-P-02': 'P-high_E-low',
+  'A-C-01': 'A-high_C-low',
+  'C-A-01': 'A-high_C-low',
+  'A-E-01': 'A-high_E-low',
+  'E-A-01': 'A-high_E-low',
+  'C-E-01': 'C-low_E-low',
+  'E-C-01': 'C-low_E-low',
+};
+
 const toAlert = (r: Rule): CrossPatternAlert => ({
   code: r.patternId,
   patternId: r.patternId,
   crossPattern: r.crossPattern,
-  trigger: r.trigger,
+  trigger: r.trigger.replaceAll('< 3.0', '<= 3.0').replaceAll('> 3.5', '>= 3.5'),
   scoreSignal: r.scoreSignal,
   diagnosis: r.diagnosis,
   whatItMeans: r.whatItMeans,
@@ -124,7 +149,17 @@ export function crossPatternAlerts(
     C: scoresByCode.C.averageScore,
     E: scoresByCode.E.averageScore,
   };
-  const out = CROSS_PATTERN_RULES.filter((r) => r.matches(scores)).map(toAlert);
+  const seenGroups = new Set<string>();
+  const out = CROSS_PATTERN_RULES
+    .filter((r) => {
+      if (!r.matches(scores)) return false;
+      const group = DUPLICATE_PATTERN_GROUPS[r.patternId];
+      if (!group) return true;
+      if (seenGroups.has(group)) return false;
+      seenGroups.add(group);
+      return true;
+    })
+    .map(toAlert);
 
   if (psychSafetyAvg !== null && psychSafetyAvg < 2.5) {
     out.push({
@@ -141,10 +176,6 @@ export function crossPatternAlerts(
       severity: 'CRITICAL',
       message:
         'Psychological Safety Gate: all other scores may be understated. Replace journey workshops with anonymous 1:1 interviews before continuing.',
-    });
-  }
-
-workshops with anonymous 1:1 interviews.',
     });
   }
   return out;
