@@ -25,6 +25,15 @@ interface Alert {
   code: string;
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   message: string;
+  patternId?: string;
+  crossPattern?: string;
+  trigger?: string;
+  scoreSignal?: string;
+  diagnosis?: string;
+  whatItMeans?: string;
+  likelyRootCause?: string;
+  validationEvidence?: string;
+  leadershipAction?: string;
 }
 
 interface OverviewResponse {
@@ -305,7 +314,7 @@ function ResultsBody({ companyId, campaignId }: { companyId: string; campaignId:
       </ActivityBlock>
 
       <ActivityBlock num="2" title="Cross-Pattern Detection" subtitle="Auto-generated from dimension scores" defaultOpen>
-        <CrossPatternList dims={o.dimensions} />
+        <CrossPatternList alerts={o.alerts} />
       </ActivityBlock>
 
       <ActivityBlock num="3" title="Executive Summary Template" subtitle="Send to VP Engineering same day" defaultOpen>
@@ -490,18 +499,38 @@ function DecisionGate() {
   );
 }
 
-function CrossPatternList({ dims }: { dims: DimensionResult[] }) {
-  const alerts = useMemo(() => crossPatternsFor(dims), [dims]);
-  const toneCls: Record<'red' | 'amber' | 'green', string> = {
-    red: 'border-red-300 bg-red-50 text-red-900',
-    amber: 'border-amber-300 bg-amber-50 text-amber-900',
-    green: 'border-emerald-300 bg-emerald-50 text-emerald-900',
+function CrossPatternList({ alerts }: { alerts: Alert[] }) {
+  const visibleAlerts = alerts.length
+    ? alerts
+    : [{
+        code: 'NO_PATTERN',
+        severity: 'INFO' as const,
+        crossPattern: 'No high-risk cross-pattern detected',
+        trigger: 'Current SPACE scores do not match a configured risk pattern',
+        diagnosis: 'No high-risk cross-dimension pattern detected at current score levels.',
+        leadershipAction: 'Monitor trend between cycles.',
+        message: 'No high-risk cross-dimension pattern detected at current score levels. Monitor trend between cycles.',
+      }];
+  const toneCls: Record<Alert['severity'], string> = {
+    CRITICAL: 'border-red-300 bg-red-50 text-red-950',
+    WARNING: 'border-amber-300 bg-amber-50 text-amber-950',
+    INFO: 'border-emerald-300 bg-emerald-50 text-emerald-950',
   };
   return (
     <ul className="space-y-2">
-      {alerts.map((a, i) => (
-        <li key={i} className={`border-l-4 rounded px-4 py-3 text-sm leading-snug ${toneCls[a.tone]}`}>
-          {a.message}
+      {visibleAlerts.map((a) => (
+        <li key={a.patternId ?? a.code} className={`border-l-4 rounded px-4 py-3 text-sm leading-snug ${toneCls[a.severity]}`}>
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className="font-mono text-[11px] font-semibold tracking-wide">{a.patternId ?? a.code}</span>
+            <span className="font-semibold">{a.crossPattern ?? a.message}</span>
+          </div>
+          {a.trigger && <div className="text-xs font-mono opacity-80 mb-2">Trigger: {a.trigger}</div>}
+          {(a.diagnosis || a.whatItMeans) && (
+            <p className="mb-2">
+              {a.diagnosis}
+              {a.whatItMeans ? ` ${a.whatItMeans}` : ''}
+            </p>
+          )}
         </li>
       ))}
     </ul>
