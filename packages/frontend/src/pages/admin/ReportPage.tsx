@@ -25,6 +25,7 @@ interface ReportTheme {
   id: string;
   themeName: string;
   status: string;
+  sourceType: string | null;
   respondentCount: number;
   percentage: number;
   jtbdStatement: string | null;
@@ -410,14 +411,14 @@ function SpaceSection({ r }: { r: Report }) {
 function ThemesSection({ r }: { r: Report }) {
   if (r.themes.length === 0) return null;
   return (
-    <Section title={`Open-text themes (${r.themes.length})`}>
+    <Section title={`Phase 2 themes (${r.themes.length})`}>
       <ul className="space-y-2 text-sm">
         {r.themes.map((t) => (
           <li key={t.id} className="border-l-2 border-slate-300 pl-3">
             <div className="font-medium">
               {t.themeName}{' '}
               <span className="text-xs text-slate-500">
-                · {t.status} · {t.respondentCount} ({t.percentage}%)
+                · {t.status} · {t.sourceType ?? 'Source not set'} · {t.respondentCount} ({t.percentage}%)
               </span>
             </div>
             {t.jtbdStatement && (

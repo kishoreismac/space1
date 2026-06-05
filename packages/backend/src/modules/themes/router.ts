@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { ZodError, z } from 'zod';
 import {
+  allCrossPatternThemeRules,
+  matchedCrossPatternThemeRules,
   ThemeCreateSchema,
   ThemeTagRequestSchema,
   ThemeUpdateSchema,
+  type DimensionCode,
 } from '@space/shared';
 import { config } from '../../config/env.js';
 import { HttpError } from '../../middleware/error.js';
@@ -67,12 +70,309 @@ async function recomputeStats(themeId: string): Promise<void> {
   });
 }
 
+async function recomputeStatsAndStatus(themeId: string): Promise<void> {
+  await recomputeStats(themeId);
+  const refreshed = await prisma.openTextTheme.findUnique({ where: { id: themeId } });
+  if (!refreshed) return;
+  const status = statusFromPercentage(refreshed.percentage);
+  if (refreshed.status !== status) {
+    await prisma.openTextTheme.update({ where: { id: themeId }, data: { status } });
+  }
+}
+
+async function upsertGeneratedTheme(input: {
+  campaignId: string;
+  themeName: string;
+  description?: string | null;
+  sourceQuestionId?: string | null;
+  sourceType?: string | null;
+  representativeQuote?: string | null;
+  jtbdStatement?: string | null;
+}): Promise<{ id: string; created: boolean; updated: boolean }> {
+  const existing = await prisma.openTextTheme.findFirst({
+    where: { campaignId: input.campaignId, themeName: input.themeName },
+  });
+  if (existing) {
+    const updated = await prisma.openTextTheme.update({
+      where: { id: existing.id },
+      data: {
+        description: existing.description ?? input.description ?? null,
+        sourceQuestionId: existing.sourceQuestionId ?? input.sourceQuestionId ?? null,
+        sourceType: existing.sourceType ?? input.sourceType ?? null,
+        representativeQuote: existing.representativeQuote ?? input.representativeQuote ?? null,
+        jtbdStatement: existing.jtbdStatement ?? input.jtbdStatement ?? null,
+      },
+    });
+    return { id: updated.id, created: false, updated: true };
+  }
+
+  const created = await prisma.openTextTheme.create({
+    data: {
+      campaignId: input.campaignId,
+      themeName: input.themeName,
+      description: input.description ?? null,
+      sourceQuestionId: input.sourceQuestionId ?? null,
+      sourceType: input.sourceType ?? null,
+      representativeQuote: input.representativeQuote ?? null,
+      jtbdStatement: input.jtbdStatement ?? null,
+      respondentCount: 0,
+      percentage: 0,
+      status: 'MONITOR',
+    },
+  });
+  return { id: created.id, created: true, updated: false };
+}
+
+async function tagAnswer(themeId: string, answerId: string): Promise<boolean> {
+  const before = await prisma.openTextThemeTag.findUnique({
+    where: { themeId_answerId: { themeId, answerId } },
+    select: { id: true },
+  });
+  await prisma.openTextThemeTag.upsert({
+    where: { themeId_answerId: { themeId, answerId } },
+    create: { themeId, answerId },
+    update: {},
+  });
+  return !before;
+}
+
+function scoreLabel(answer: {
+  textValue: string | null;
+  numericValue: number | null;
+  scoredValue: number | null;
+  question: { questionType?: string; isReverseScored?: boolean };
+}): string | null {
+  const txt = (answer.textValue ?? '').trim();
+  if (txt) return txt;
+  const scored = answer.scoredValue ?? answer.numericValue;
+  if (scored === null || scored === undefined) return null;
+  const raw = answer.numericValue ?? scored;
+  return answer.question.questionType === 'LIKERT'
+    ? `Score ${scored}${answer.question.isReverseScored ? ` (raw ${raw}, reverse scored)` : ''}`
+    : `Value ${raw}`;
+}
+
+function scoresByDimension(
+  answers: Array<{ scoredValue: number | null; question: { dimension: { code: string } } }>,
+): Record<DimensionCode, number | null> {
+  const buckets: Record<DimensionCode, number[]> = { S: [], P: [], A: [], C: [], E: [] };
+  for (const answer of answers) {
+    const code = answer.question.dimension.code as DimensionCode;
+    if (answer.scoredValue !== null && code in buckets) buckets[code].push(answer.scoredValue);
+  }
+  return (Object.keys(buckets) as DimensionCode[]).reduce((acc, code) => {
+    const vals = buckets[code];
+    acc[code] = vals.length
+      ? Math.round((vals.reduce((sum, value) => sum + value, 0) / vals.length) * 100) / 100
+      : null;
+    return acc;
+  }, {} as Record<DimensionCode, number | null>);
+}
+
+function evidenceAnswerIdsForCrossPattern(
+  answers: Array<{
+    id: string;
+    scoredValue: number | null;
+    question: { dimension: { code: string } };
+  }>,
+  scores: Record<DimensionCode, number | null>,
+  dimensions: DimensionCode[],
+): string[] {
+  const candidates = dimensions.length > 0
+    ? dimensions
+    : (Object.keys(scores) as DimensionCode[]);
+  const weakDimensions = candidates.filter((code) => (scores[code] ?? 5) <= 3);
+  const targetDimensions = weakDimensions.length > 0 ? weakDimensions : candidates;
+
+  const ids: string[] = [];
+  for (const code of targetDimensions) {
+    const best = answers
+      .filter((answer) => answer.question.dimension.code === code && answer.scoredValue !== null)
+      .sort((a, b) => {
+        const av = a.scoredValue ?? 99;
+        const bv = b.scoredValue ?? 99;
+        return weakDimensions.length > 0 ? av - bv : bv - av;
+      })[0];
+    if (best) ids.push(best.id);
+  }
+  return [...new Set(ids)];
+}
+
+const ROOT_CAUSE_LIBRARY: Array<{ match: RegExp; causes: string[] }> = [
+  {
+    match: /ci|cd|pipeline|build|test|flaky|deploy|release/i,
+    causes: [
+      'CI/CD pipeline stages are too serial and cannot give fast feedback.',
+      'Flaky tests are creating false failures and forcing repeated reruns.',
+      'Build and test infrastructure is under-provisioned during peak development hours.',
+      'Failure messages do not clearly identify the broken component or owner.',
+      'Deployment checks are manual or inconsistent across environments.',
+      'Test suites are not well separated between smoke, integration, and full regression runs.',
+      'Environment drift causes failures that are unrelated to the developer change.',
+      'Pipeline ownership is unclear, so recurring failures are not permanently fixed.',
+      'Release gates depend on approvals or handoffs that create queue time.',
+      'Observability around build duration, failure rate, and retry causes is missing.',
+    ],
+  },
+  {
+    match: /review|pr|pull request|code review|rework/i,
+    causes: [
+      'Pull requests are too large, making reviews slow and hard to reason about.',
+      'Reviewer ownership is unclear, so PRs wait before the right person engages.',
+      'Review expectations are inconsistent across teams or senior engineers.',
+      'Acceptance criteria are incomplete, causing rework during review.',
+      'Automated checks do not catch common issues before human review.',
+      'Review capacity is overloaded during sprint-end or release windows.',
+      'Feedback is late, vague, or style-focused instead of risk-focused.',
+      'Cross-team changes require reviewers who do not share the same priorities.',
+      'Developers lack enough context to make safe changes on the first attempt.',
+      'Definition of done is not explicit enough before implementation starts.',
+    ],
+  },
+  {
+    match: /requirement|acceptance|planning|priority|business|context|scope/i,
+    causes: [
+      'Requirements are not translated into testable acceptance criteria.',
+      'Business context is missing, so engineers make assumptions during implementation.',
+      'Priorities change after work starts, creating churn and partial rework.',
+      'Product, design, and engineering do not share a single source of truth.',
+      'Edge cases and non-functional requirements are discovered too late.',
+      'Backlog items enter sprint planning before they are ready for development.',
+      'Decision owners are unclear when tradeoffs or scope questions appear.',
+      'User impact is not visible enough to guide technical decisions.',
+      'Dependencies are not surfaced during planning, causing surprise blockers.',
+      'Requirement changes are not communicated consistently after implementation begins.',
+    ],
+  },
+  {
+    match: /interrupt|context|meeting|focus|wip|activity|switch|deep work/i,
+    causes: [
+      'Developers are carrying too many concurrent work items.',
+      'Ad-hoc requests bypass normal prioritization and interrupt planned work.',
+      'Meeting load fragments the day and prevents deep work blocks.',
+      'Urgent support or operational work is not capacity-planned.',
+      'Teams lack explicit focus-time norms or interruption policies.',
+      'Work is split across too many projects, services, or stakeholders.',
+      'Priority changes are frequent and not accompanied by tradeoff decisions.',
+      'Dependency follow-ups require repeated context switching across tools.',
+      'Managers optimize for responsiveness instead of flow efficiency.',
+      'Manual status reporting consumes time without reducing delivery risk.',
+    ],
+  },
+  {
+    match: /communication|collaboration|handoff|dependency|ownership|decision|api|contract|knowledge/i,
+    causes: [
+      'Ownership for services, APIs, or decisions is not easy to discover.',
+      'Cross-team dependencies are identified too late in the delivery cycle.',
+      'API or contract changes are not communicated before integration begins.',
+      'Important decisions live in chat threads instead of durable documentation.',
+      'Teams do not have clear escalation paths when blocked.',
+      'Handoffs lose context between product, design, engineering, QA, and operations.',
+      'Communication rituals report status but do not resolve blockers.',
+      'Psychological safety issues prevent people from raising risks early.',
+      'Documentation is stale, fragmented, or not connected to service ownership.',
+      'Remote or distributed collaboration norms are not explicit enough.',
+    ],
+  },
+  {
+    match: /tool|environment|local|provision|ide|flow|automation|manual|toil/i,
+    causes: [
+      'Local development setup is fragile or differs from shared environments.',
+      'Developers rely on manual steps that could be automated safely.',
+      'Tooling is fragmented, requiring repeated switching and duplicated context.',
+      'Environment provisioning depends on tickets, approvals, or specialist help.',
+      'Common tasks lack paved-road scripts, templates, or self-service workflows.',
+      'Platform teams do not have enough feedback loops from product engineers.',
+      'Access, secrets, or configuration issues repeatedly block setup and testing.',
+      'Tool performance problems are normalized instead of tracked as productivity debt.',
+      'Engineering standards are spread across multiple locations and hard to follow.',
+      'Automation opportunities are known but not prioritized against feature work.',
+    ],
+  },
+  {
+    match: /incident|rca|production|stability|page|hotfix|quality|defect/i,
+    causes: [
+      'Production signals do not identify the affected service, owner, or likely change quickly.',
+      'Incident response depends on a small number of experienced engineers.',
+      'Runbooks are missing, stale, or not tied to current architecture.',
+      'Change impact is hard to predict before code is merged.',
+      'Testing strategy does not catch integration or regression risk early enough.',
+      'Post-incident actions are not tracked to durable completion.',
+      'Monitoring focuses on symptoms but not actionable root indicators.',
+      'Release practices make rollback or mitigation slower than expected.',
+      'Technical debt in critical paths increases operational fragility.',
+      'Ownership boundaries between build, run, and support are unclear.',
+    ],
+  },
+  {
+    match: /satisfaction|wellbeing|burnout|morale|growth|autonomy|psychological|safety/i,
+    causes: [
+      'Developers do not feel safe raising delivery risks or technical concerns early.',
+      'High workload is sustained through overtime or hidden recovery time.',
+      'Recognition systems value output volume more than sustainable engineering quality.',
+      'Career growth, learning time, or autonomy is being crowded out by delivery pressure.',
+      'Repeated blockers have become normalized, reducing sense of progress.',
+      'Engineers lack influence over tooling, process, or technical debt priorities.',
+      'Managers do not have enough visibility into daily friction and cognitive load.',
+      'Teams are asked to absorb unplanned work without explicit capacity tradeoffs.',
+      'Low-value work reduces energy and sense of accomplishment.',
+      'Feedback loops do not show how developer improvements are acted on.',
+    ],
+  },
+  {
+    match: /debt|legacy|comprehension|unfamiliar|blast radius|architecture/i,
+    causes: [
+      'Code ownership and architectural boundaries are not clear enough.',
+      'Legacy areas lack tests, documentation, or current subject-matter experts.',
+      'Change impact is difficult to assess across services and dependencies.',
+      'Technical debt is visible but not connected to planning and prioritization.',
+      'Developers lack safe refactoring time before adding new functionality.',
+      'Important domain knowledge is held by a small number of people.',
+      'Service maps, dependency diagrams, or runtime ownership data are missing.',
+      'The codebase lacks consistent patterns for common implementation tasks.',
+      'Onboarding paths do not teach how to make safe changes in risky areas.',
+      'Quality gates catch problems late instead of guiding implementation early.',
+    ],
+  },
+];
+
+const GENERIC_ROOT_CAUSES = [
+  'The blocker has no clear owner responsible for permanent resolution.',
+  'The issue is treated as normal friction instead of measured productivity loss.',
+  'Teams lack enough data to quantify the blocker and prioritize it confidently.',
+  'Workflows depend on manual handoffs that create queue time and rework.',
+  'Policy, process, or tooling decisions are made without enough developer feedback.',
+  'The blocker spans multiple teams, so no single team can solve it alone.',
+  'Documentation, ownership, and operational knowledge are fragmented.',
+  'Short-term delivery pressure repeatedly defers system improvement work.',
+  'Existing metrics emphasize activity rather than developer flow and outcomes.',
+  'Improvement actions are started but not tracked through sustained adoption.',
+];
+
+function suggestedRootCauses(input: {
+  themeName: string;
+  description: string | null;
+  questionTexts: string[];
+}): string[] {
+  const text = [input.themeName, input.description, ...input.questionTexts]
+    .filter(Boolean)
+    .join(' ');
+  const selected = ROOT_CAUSE_LIBRARY.find((entry) => entry.match.test(text))?.causes
+    ?? GENERIC_ROOT_CAUSES;
+  return selected.slice(0, 10);
+}
+
 // ─── List + tagged answers ─────────────────────────────────────────────
 themesRouter.get('/', async (req, res, next) => {
   try {
     const { companyId, campaignId } = req.params as { companyId: string; campaignId: string };
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
+    const includeEmpty = req.query.includeEmpty === 'true';
+    const totalRespondents = await totalCompletedRespondents(campaignId);
+    if (!includeEmpty && totalRespondents === 0) {
+      return res.json({ items: [] });
+    }
     const items = await prisma.openTextTheme.findMany({
       where: { campaignId },
       orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }, { createdAt: 'desc' }],
@@ -81,21 +381,24 @@ themesRouter.get('/', async (req, res, next) => {
       },
     });
     res.json({
-      items: items.map((t) => ({
-        id: t.id,
-        campaignId: t.campaignId,
-        themeName: t.themeName,
-        description: t.description,
-        sourceQuestionId: t.sourceQuestionId,
-        representativeQuote: t.representativeQuote,
-        jtbdStatement: t.jtbdStatement,
-        status: t.status,
-        respondentCount: t.respondentCount,
-        percentage: t.percentage,
-        tagCount: t._count.tags,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-      })),
+      items: items
+        .filter((t) => includeEmpty || t._count.tags > 0)
+        .map((t) => ({
+          id: t.id,
+          campaignId: t.campaignId,
+          themeName: t.themeName,
+          description: t.description,
+          sourceQuestionId: t.sourceQuestionId,
+          sourceType: t.sourceType,
+          representativeQuote: t.representativeQuote,
+          jtbdStatement: t.jtbdStatement,
+          status: t.status,
+          respondentCount: t.respondentCount,
+          percentage: t.percentage,
+          tagCount: t._count.tags,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+        })),
     });
   } catch (e) { next(e); }
 });
@@ -114,7 +417,14 @@ themesRouter.get('/:themeId/tags', async (req, res, next) => {
       include: {
         answer: {
           include: {
-            question: { select: { questionNumber: true, questionText: true } },
+            question: {
+              select: {
+                questionNumber: true,
+                questionText: true,
+                questionType: true,
+                isReverseScored: true,
+              },
+            },
             submission: { select: { roleLabel: true, teamId: true } },
           },
         },
@@ -126,6 +436,10 @@ themesRouter.get('/:themeId/tags', async (req, res, next) => {
         id: t.id,
         answerId: t.answerId,
         text: t.answer.textValue,
+        displayText: scoreLabel(t.answer),
+        numericValue: t.answer.numericValue,
+        scoredValue: t.answer.scoredValue,
+        questionType: t.answer.question.questionType,
         questionNumber: t.answer.question.questionNumber,
         questionText: t.answer.question.questionText,
         roleLabel: t.answer.submission.roleLabel,
@@ -255,6 +569,7 @@ themesRouter.post(
             campaignId,
             themeName,
             sourceQuestionId: signalQuestionMap.get(themeName) ?? null,
+            sourceType: 'Text Question',
             respondentCount: 0,
             percentage: 0,
             status: 'MONITOR',
@@ -352,6 +667,7 @@ themesRouter.post(
           themeName: body.themeName,
           description: body.description ?? null,
           sourceQuestionId: body.sourceQuestionId ?? null,
+          sourceType: body.sourceType ?? null,
           representativeQuote: body.representativeQuote ?? null,
           jtbdStatement: body.jtbdStatement ?? null,
           status: body.status ?? 'MONITOR',
@@ -389,6 +705,7 @@ themesRouter.patch(
           ...(body.sourceQuestionId !== undefined
             ? { sourceQuestionId: body.sourceQuestionId }
             : {}),
+          ...(body.sourceType !== undefined ? { sourceType: body.sourceType } : {}),
           ...(body.representativeQuote !== undefined
             ? { representativeQuote: body.representativeQuote }
             : {}),
@@ -564,7 +881,15 @@ themesRouter.get('/:themeId/detail', async (req, res, next) => {
       include: {
         answer: {
           include: {
-            question: { select: { id: true, questionNumber: true, questionText: true } },
+            question: {
+              select: {
+                id: true,
+                questionNumber: true,
+                questionText: true,
+                questionType: true,
+                isReverseScored: true,
+              },
+            },
             submission: { select: { id: true, roleLabel: true, teamId: true } },
           },
         },
@@ -602,7 +927,7 @@ themesRouter.get('/:themeId/detail', async (req, res, next) => {
       }
       g.respondents.add(t.answer.submission.id);
       g.answerCount += 1;
-      const txt = (t.answer.textValue ?? '').trim();
+      const txt = scoreLabel(t.answer);
       if (txt) {
         g.answers.push({
           answerId: t.answer.id,
@@ -621,11 +946,13 @@ themesRouter.get('/:themeId/detail', async (req, res, next) => {
       if (!s) { s = new Set(); byRole.set(role, s); }
       s.add(t.answer.submission.id);
     }
+    const relatedQuestionTexts = [...byQuestion.values()].map((q) => q.questionText);
 
     res.json({
       id: theme.id,
       themeName: theme.themeName,
       description: theme.description,
+      sourceType: theme.sourceType,
       status: theme.status,
       representativeQuote: theme.representativeQuote,
       jtbdStatement: theme.jtbdStatement,
@@ -633,6 +960,11 @@ themesRouter.get('/:themeId/detail', async (req, res, next) => {
       percentage: totalRespondents > 0 ? Math.round((respondentIds.size / totalRespondents) * 1000) / 10 : 0,
       tagCount: tags.length,
       totalRespondents,
+      possibleRootCauses: suggestedRootCauses({
+        themeName: theme.themeName,
+        description: theme.description,
+        questionTexts: relatedQuestionTexts,
+      }),
       questions: [...byQuestion.values()]
         .map((g) => ({
           questionId: g.questionId,
@@ -655,7 +987,7 @@ themesRouter.get('/:themeId/detail', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// ─── Auto-generate themes from open-text answers ───────────────────────
+// ─── Auto-generate themes from questionnaire, numeric, matrix, and text evidence ───────────────────────
 themesRouter.post(
   '/auto-generate',
   requireRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'ANALYST'),
@@ -670,120 +1002,197 @@ themesRouter.post(
       // Incremental by default: only analyse answers that have NOT been tagged yet.
       // Pass { incremental: false } to re-analyse every answer (legacy behaviour).
       const incremental = req.body?.incremental !== false && !replace;
+      const totalRespondents = await totalCompletedRespondents(campaignId);
 
-      // Pull every completed open-text answer for this campaign
-      const answers = await prisma.answer.findMany({
-        where: {
-          submission: { campaignId, status: 'COMPLETED' },
-          question: {
-            questionnaireId: campaign.questionnaireId,
-            questionType: 'OPEN_TEXT',
-          },
-          NOT: { textValue: null },
-          ...(incremental ? { themeTags: { none: {} } } : {}),
-        },
-        select: { id: true, textValue: true },
-      });
-      const inputs = answers
-        .filter((a) => (a.textValue ?? '').trim().length > 0)
-        .map((a) => ({ id: a.id, text: a.textValue as string }));
-
-      if (inputs.length === 0) {
+      if (totalRespondents === 0) {
         return res.json({
           created: 0,
           updated: 0,
           totalTagged: 0,
+          totalRespondents,
           themes: [],
           incremental,
-          note: incremental
-            ? 'No new untagged answers to analyse.'
-            : 'No open-text answers available.',
+          questionnaireThemeCount: 0,
+          crossPatternThemeCount: 0,
+          clusterThemeCount: 0,
+          note: 'No completed survey submissions yet. Theme analysis runs after at least one survey is submitted.',
         });
       }
 
-      const clusters = clusterAnswers(inputs, { minSize });
-
-      // Optionally wipe existing themes (only those without manual edits we don't track —
-      // we treat replace=true as full reset for simplicity).
       if (replace) {
         await prisma.openTextTheme.deleteMany({ where: { campaignId } });
       }
 
-      const totalRespondents = await totalCompletedRespondents(campaignId);
+      const questions = await prisma.question.findMany({
+        where: {
+          questionnaireId: campaign.questionnaireId,
+          status: 'ACTIVE',
+          NOT: { blockerSignal: null },
+        },
+        include: { dimension: { select: { code: true, name: true } } },
+        orderBy: { questionNumber: 'asc' },
+      });
+
+      const allAnswers = await prisma.answer.findMany({
+        where: {
+          submission: { campaignId, status: 'COMPLETED' },
+          question: { questionnaireId: campaign.questionnaireId },
+        },
+        include: {
+          question: {
+            include: { dimension: { select: { code: true, name: true } } },
+          },
+          themeTags: { select: { themeId: true } },
+        },
+      });
+
       let created = 0;
       let updated = 0;
       let totalTagged = 0;
-      const summaryThemes: Array<{ id: string; themeName: string; respondentCount: number; percentage: number; status: string }> = [];
+      const generatedThemeIds = new Set<string>();
+      const themeIdByName = new Map<string, string>();
 
-      for (const cluster of clusters) {
-        // Reuse a theme with the same name if present (so re-runs are idempotent)
-        const existing = await prisma.openTextTheme.findFirst({
-          where: { campaignId, themeName: cluster.themeName },
-        });
+      const rememberTheme = async (input: {
+        themeName: string;
+        description?: string | null;
+        sourceQuestionId?: string | null;
+        sourceType?: string | null;
+        representativeQuote?: string | null;
+        jtbdStatement?: string | null;
+      }) => {
+        const result = await upsertGeneratedTheme({ campaignId, ...input });
+        themeIdByName.set(input.themeName, result.id);
+        generatedThemeIds.add(result.id);
+        if (result.created) created += 1;
+        else if (result.updated) updated += 1;
+        return result.id;
+      };
 
-        let theme;
-        if (existing) {
-          theme = await prisma.openTextTheme.update({
-            where: { id: existing.id },
-            data: {
-              description: existing.description ?? cluster.description,
-              jtbdStatement: existing.jtbdStatement ?? cluster.jtbdStatement,
-              representativeQuote: existing.representativeQuote ?? cluster.representativeQuote,
-            },
-          });
-          updated += 1;
-        } else {
-          theme = await prisma.openTextTheme.create({
-            data: {
-              campaignId,
-              themeName: cluster.themeName,
-              description: cluster.description,
-              jtbdStatement: cluster.jtbdStatement,
-              representativeQuote: cluster.representativeQuote,
-              status: 'MONITOR',
-            },
-          });
-          created += 1;
-        }
-
-        // Tag answers (upsert to avoid duplicates)
-        for (const answerId of cluster.answerIds) {
-          await prisma.openTextThemeTag.upsert({
-            where: { themeId_answerId: { themeId: theme.id, answerId } },
-            create: { themeId: theme.id, answerId },
-            update: {},
-          });
-          totalTagged += 1;
-        }
-
-        // Recompute stats + apply 30%/15% rule for status
-        await recomputeStats(theme.id);
-        const refreshed = await prisma.openTextTheme.findUnique({ where: { id: theme.id } });
-        if (refreshed) {
-          let newStatus: 'PROMOTE' | 'INVESTIGATE' | 'MONITOR' = 'MONITOR';
-          if (refreshed.percentage >= 30) newStatus = 'PROMOTE';
-          else if (refreshed.percentage >= 15) newStatus = 'INVESTIGATE';
-          if (refreshed.status !== newStatus) {
-            await prisma.openTextTheme.update({
-              where: { id: refreshed.id },
-              data: { status: newStatus },
-            });
-          }
-          summaryThemes.push({
-            id: refreshed.id,
-            themeName: refreshed.themeName,
-            respondentCount: refreshed.respondentCount,
-            percentage: refreshed.percentage,
-            status: newStatus,
-          });
+      const firstQuestionBySignal = new Map<string, typeof questions[number]>();
+      for (const q of questions) {
+        const signal = (q.blockerSignal ?? '').trim();
+        if (signal && !firstQuestionBySignal.has(signal)) {
+          firstQuestionBySignal.set(signal, q);
         }
       }
 
+      for (const [themeName, q] of firstQuestionBySignal.entries()) {
+        await rememberTheme({
+          themeName,
+          sourceQuestionId: q.id,
+          sourceType: q.questionType === 'OPEN_TEXT' ? 'Text Question' : 'Numeric Question',
+          description: `Questionnaire blocker signal from ${q.dimension.code} dimension, Q${q.questionNumber}: ${q.questionText}`,
+        });
+      }
+
+      const crossRules = allCrossPatternThemeRules().filter((rule) => rule.severity !== 'INFO');
+      for (const rule of crossRules) {
+        await rememberTheme({
+          themeName: `${rule.patternId} · ${rule.crossPattern}`,
+          sourceType: 'Cross-Dimension Metric',
+          description: `${rule.diagnosis}. Trigger: ${rule.trigger}. Likely root cause: ${rule.likelyRootCause}.`,
+          jtbdStatement: `When ${rule.likelyRootCause}, I want ${rule.leadershipAction}, so the team can improve sustainable delivery.`,
+        });
+      }
+
+      for (const answer of allAnswers) {
+        const signal = (answer.question.blockerSignal ?? '').trim();
+        if (!signal) continue;
+        const themeId = themeIdByName.get(signal);
+        if (!themeId) continue;
+
+        const hasOpenEvidence =
+          answer.question.questionType === 'OPEN_TEXT' &&
+          (answer.textValue ?? '').trim().length > 0;
+        const hasLowNumericEvidence =
+          answer.question.questionType === 'LIKERT' &&
+          answer.scoredValue !== null &&
+          answer.scoredValue <= 3;
+
+        if (hasOpenEvidence || hasLowNumericEvidence) {
+          if (await tagAnswer(themeId, answer.id)) totalTagged += 1;
+        }
+      }
+
+      const answersBySubmission = new Map<string, typeof allAnswers>();
+      for (const answer of allAnswers) {
+        if (answer.scoredValue === null) continue;
+        const group = answersBySubmission.get(answer.submissionId) ?? [];
+        group.push(answer);
+        answersBySubmission.set(answer.submissionId, group);
+      }
+
+      for (const answersForSubmission of answersBySubmission.values()) {
+        const scores = scoresByDimension(answersForSubmission);
+        const matches = matchedCrossPatternThemeRules(scores).filter((rule) => rule.severity !== 'INFO');
+        for (const rule of matches) {
+          const themeId = themeIdByName.get(`${rule.patternId} · ${rule.crossPattern}`);
+          if (!themeId) continue;
+          const evidenceIds = evidenceAnswerIdsForCrossPattern(
+            answersForSubmission,
+            scores,
+            rule.dimensions,
+          );
+          for (const answerId of evidenceIds) {
+            if (await tagAnswer(themeId, answerId)) totalTagged += 1;
+          }
+        }
+      }
+
+      const answersForClusters = allAnswers
+        .filter((a) => {
+          if (a.question.questionType !== 'OPEN_TEXT') return false;
+          if ((a.textValue ?? '').trim().length === 0) return false;
+          return incremental ? a.themeTags.length === 0 : true;
+        })
+        .map((a) => ({ id: a.id, text: a.textValue as string }));
+
+      const clusters = answersForClusters.length > 0
+        ? clusterAnswers(answersForClusters, { minSize })
+        : [];
+
+      for (const cluster of clusters) {
+        const themeId = await rememberTheme({
+          themeName: cluster.themeName,
+          sourceType: 'Text Question',
+          description: cluster.description,
+          jtbdStatement: cluster.jtbdStatement,
+          representativeQuote: cluster.representativeQuote,
+        });
+        for (const answerId of cluster.answerIds) {
+          if (await tagAnswer(themeId, answerId)) totalTagged += 1;
+        }
+      }
+
+      for (const themeId of generatedThemeIds) {
+        await recomputeStatsAndStatus(themeId);
+      }
+
+      const summary = await prisma.openTextTheme.findMany({
+        where: { id: { in: [...generatedThemeIds] } },
+        include: { _count: { select: { tags: true } } },
+        orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }, { themeName: 'asc' }],
+      });
+      const summaryThemes = summary.map((theme) => ({
+        id: theme.id,
+        themeName: theme.themeName,
+        respondentCount: theme.respondentCount,
+        percentage: theme.percentage,
+        status: theme.status,
+        tagCount: theme._count.tags,
+      }));
+      const visibleThemes = summaryThemes.filter((theme) => theme.tagCount > 0);
+
       recordAudit(req, 'themes.autoGenerate', 'OpenTextTheme', campaignId, {
-        created, updated, totalTagged, clusters: clusters.length, totalRespondents,
+        created,
+        updated,
+        totalTagged,
+        questionnaireThemes: firstQuestionBySignal.size,
+        crossPatternThemes: crossRules.length,
+        clusters: clusters.length,
+        totalRespondents,
       });
 
-      // Mirror themes snapshot to Azure Blob Storage
       await trySaveArtifact('themes', companyId, campaignId, {
         generatedAt: new Date().toISOString(),
         incremental,
@@ -792,20 +1201,39 @@ themesRouter.post(
         updated,
         totalTagged,
         totalRespondents,
-        themes: summaryThemes,
+        questionnaireThemeCount: firstQuestionBySignal.size,
+        crossPatternThemeCount: crossRules.length,
+        clusterThemeCount: clusters.length,
+        generatedCandidateCount: summaryThemes.length,
+        themes: visibleThemes,
       });
       await trySaveArtifact('analysis-results', companyId, campaignId, {
         kind: 'theme-auto-generate',
         ranAt: new Date().toISOString(),
         incremental,
-        inputCount: inputs.length,
+        inputCount: allAnswers.length,
+        openTextClusterInputCount: answersForClusters.length,
         clustersFound: clusters.length,
+        questionnaireThemeCount: firstQuestionBySignal.size,
+        crossPatternThemeCount: crossRules.length,
+        generatedCandidateCount: summaryThemes.length,
+        visibleThemeCount: visibleThemes.length,
         created,
         updated,
         totalTagged,
       });
 
-      res.json({ created, updated, totalTagged, totalRespondents, themes: summaryThemes, incremental });
+      res.json({
+        created,
+        updated,
+        totalTagged,
+        totalRespondents,
+        themes: visibleThemes,
+        incremental,
+        questionnaireThemeCount: firstQuestionBySignal.size,
+        crossPatternThemeCount: crossRules.length,
+        clusterThemeCount: clusters.length,
+      });
     } catch (e) { next(e); }
   },
 );

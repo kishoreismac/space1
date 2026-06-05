@@ -123,6 +123,7 @@ exportRouter.get('/themes.csv', async (req, res, next) => {
       t.id,
       t.themeName,
       t.status,
+      t.sourceType ?? '',
       t.respondentCount,
       t.percentage,
       t._count.tags,
@@ -134,7 +135,7 @@ exportRouter.get('/themes.csv', async (req, res, next) => {
       res,
       `campaign-${campaignId}-themes.csv`,
       toCsv(
-        ['id', 'themeName', 'status', 'respondentCount', 'percentage', 'tagCount', 'jtbd', 'representativeQuote', 'description'],
+        ['id', 'themeName', 'status', 'source', 'respondentCount', 'percentage', 'tagCount', 'jtbd', 'representativeQuote', 'description'],
         rows,
       ),
     );

@@ -289,6 +289,7 @@ model OpenTextTheme {
   id                  String   @id @default(cuid())
   campaignId          String
   sourceQuestionId    String?
+  sourceType          String?
   themeName           String
   description         String?
   respondentCount     Int      @default(0)

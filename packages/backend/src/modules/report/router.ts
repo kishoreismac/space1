@@ -264,6 +264,7 @@ reportRouter.get('/', async (req, res, next) => {
         id: t.id,
         themeName: t.themeName,
         status: t.status,
+        sourceType: t.sourceType,
         respondentCount: t.respondentCount,
         percentage: t.percentage,
         jtbdStatement: t.jtbdStatement,

@@ -12,6 +12,7 @@ interface Theme {
   id: string;
   themeName: string;
   description: string | null;
+  sourceType: 'Numeric Question' | 'Text Question' | 'Cross-Dimension Metric' | null;
   representativeQuote: string | null;
   jtbdStatement: string | null;
   status: 'PROMOTE' | 'INVESTIGATE' | 'MONITOR';
@@ -34,7 +35,11 @@ interface UntaggedResponse { items: UntaggedAnswer[]; }
 interface TaggedAnswer {
   id: string;
   answerId: string;
-  text: string;
+  text: string | null;
+  displayText: string | null;
+  numericValue?: number | null;
+  scoredValue?: number | null;
+  questionType?: string;
   questionNumber: number;
   questionText: string;
   roleLabel: string | null;
@@ -191,15 +196,15 @@ export default function ThemesPage() {
             <ActivityBlock num="3" title="Extract JTBD & Check Misalignment" subtitle="Preserve developer language and identify hidden blockers">
               <div>
                 <div className="mb-2 p-3 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-yellow-900">
-                  <span className="font-semibold">If a theme appears in &gt;30% of open text but does NOT correspond to a low Likert score, the Likert question missed the blocker. Flag it for additional investigation in Phase 3.</span>
+                  <span className="font-semibold">If a theme appears in &gt;30% of text, low Likert responses, or cross-pattern evidence but does NOT align with the expected dimension score, flag it for additional investigation in Phase 3.</span>
                 </div>
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
-                  Themes appearing in text but not in low Likert scores
+                  Themes needing Phase 3 corroboration notes
                 </label>
                 <textarea
                   className="w-full border border-slate-300 rounded px-2 py-1 text-sm mb-2"
                   rows={3}
-                  placeholder="e.g. 'On-call rotation burden' appeared in 35% of Q40 responses but C dimension scored 3.4 (moderate/healthy). This suggests Q39 (on-call rotation question) is under-scoring the actual severity. Flag for Phase 3 DORA/incident data pull."
+                  placeholder="e.g. 'On-call rotation burden' appeared in 35% of Q40 responses but C dimension scored 3.4. Flag for Phase 3 DORA, incident, or journey evidence."
                   value={misalignmentNotes}
                   onChange={e => { setMisalignmentNotes(e.target.value); setNotesSaved(false); setNotesError(null); }}
                 />
@@ -294,7 +299,7 @@ function ThresholdGate({ companyId, campaignId }: { companyId: string; campaignI
     <div>
       <div className="mb-2 p-3 bg-black text-white rounded text-sm">
         <span className="font-semibold">Decision Gate: Promoted vs. Investigate vs. Monitor</span><br />
-        30%+ of respondents mention it {'->'} <b>PROMOTED</b> to Phase 3 cross-validation. 15-29% {'->'} <b>INVESTIGATE</b>. Below 15% {'->'} <b>MONITOR</b>.
+        30%+ of respondents show the signal {'->'} <b>PROMOTED</b> to Phase 3 cross-validation. 15-29% {'->'} <b>INVESTIGATE</b>. Below 15% {'->'} <b>MONITOR</b>.
       </div>
       <div className="mb-2 p-2 bg-green-50 border-l-4 border-green-400 text-green-900 text-sm">
         {isLoading ? 'Loading...' : `${promoted.length} theme(s) at 30%+ - PROMOTED to Phase 3 cross-validation. Add these to the triangulation matrix.`}
@@ -389,13 +394,13 @@ function ThemesWorkspace({
                   </span>
                 </div>
                 <div className="text-xs text-slate-500 mt-1">
-                  {theme.respondentCount} respondents - {theme.percentage}% - {theme.tagCount} tags
+                  {theme.sourceType ?? 'Source not set'} - {theme.respondentCount} respondents - {theme.percentage}% - {theme.tagCount} tags
                 </div>
               </button>
             </li>
           ))}
           {!themes.isLoading && (themes.data?.items.length ?? 0) === 0 && (
-            <li className="text-sm text-slate-500 py-2">No themes yet. Click Auto Analyse to generate themes automatically.</li>
+            <li className="text-sm text-slate-500 py-2">No themes yet. Click Auto Analyse to generate questionnaire, numeric, matrix, and text themes automatically.</li>
           )}
         </ul>
       </aside>
@@ -432,28 +437,101 @@ function ThemeCreateForm({
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [status, setStatus] = useState<Theme['status']>('MONITOR');
+  const [sourceType, setSourceType] = useState<NonNullable<Theme['sourceType']>>('Text Question');
+  const [representativeQuote, setRepresentativeQuote] = useState('');
+  const [jtbdStatement, setJtbdStatement] = useState('');
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ themeName: name, description: description || null, status: 'MONITOR' });
+        onSubmit({
+          themeName: name,
+          description: description || null,
+          status,
+          sourceType,
+          representativeQuote: representativeQuote || null,
+          jtbdStatement: jtbdStatement || null,
+        });
       }}
       className="space-y-2 bg-slate-50 border border-slate-200 rounded p-3 mb-3"
     >
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600 mb-1">
+          Theme Name
+        </span>
       <input
         required
-        placeholder="Theme name (e.g. Slow CI pipeline)"
+        placeholder="e.g. Slow CI pipeline"
         value={name}
         onChange={(e) => setName(e.target.value)}
         className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
       />
+      </label>
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600 mb-1">
+          Description
+        </span>
       <textarea
-        placeholder="Short description (optional)"
+        placeholder="Short description"
         rows={2}
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
       />
+      </label>
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600 mb-1">
+          Status
+        </span>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as Theme['status'])}
+          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+        >
+          <option value="PROMOTE">Promote</option>
+          <option value="INVESTIGATE">Investigate</option>
+          <option value="MONITOR">Monitor</option>
+        </select>
+      </label>
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600 mb-1">
+          Source
+        </span>
+        <select
+          value={sourceType}
+          onChange={(e) => setSourceType(e.target.value as NonNullable<Theme['sourceType']>)}
+          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+        >
+          <option value="Numeric Question">Numeric Question</option>
+          <option value="Text Question">Text Question</option>
+          <option value="Cross-Dimension Metric">Cross-Dimension Metric</option>
+        </select>
+      </label>
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600 mb-1">
+          Representative Quote
+        </span>
+        <textarea
+          placeholder="Paste a representative respondent quote"
+          rows={2}
+          value={representativeQuote}
+          onChange={(e) => setRepresentativeQuote(e.target.value)}
+          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+        />
+      </label>
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600 mb-1">
+          JTBD
+        </span>
+        <textarea
+          placeholder="When ___, I want ___, so I can ___"
+          rows={2}
+          value={jtbdStatement}
+          onChange={(e) => setJtbdStatement(e.target.value)}
+          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+        />
+      </label>
       {error && <div className="text-xs text-red-600">{error}</div>}
       <button
         disabled={pending}
@@ -553,29 +631,31 @@ function ThemeDetail({
         <div className="grid grid-cols-3 gap-3 text-center">
           <Stat label="Respondents" value={theme.respondentCount} />
           <Stat label="% of campaign" value={`${theme.percentage}%`} />
-          <Stat label="Tags" value={theme.tagCount} />
+          <Stat label="Source" value={theme.sourceType ?? 'Not set'} />
         </div>
 
         <EditableField
-          label="Representative quote"
+          label="Representative Quote"
           value={theme.representativeQuote}
           placeholder="Paste a representative respondent quote..."
           onSave={(value) => update.mutate({ representativeQuote: value || null })}
         />
         <EditableField
-          label="JTBD statement"
+          label="JTBD"
           value={theme.jtbdStatement}
           placeholder="When ___, I want ___, so I can ___"
           onSave={(value) => update.mutate({ jtbdStatement: value || null })}
         />
       </div>
 
+      <RootCausePanel base={base} themeId={themeId} />
+
       <RelatedQuestionsPanel base={base} themeId={themeId} />
 
       <AnswersPanel
         title={`Tagged answers (${tagged.data?.items.length ?? 0})`}
         loading={tagged.isLoading}
-        empty="No answers tagged to this theme yet."
+        empty="No evidence tagged to this theme yet."
         answers={tagged.data?.items ?? []}
         actionLabel="Untag"
         onAction={(answerId) => untag.mutate(answerId)}
@@ -595,9 +675,12 @@ function ThemeDetail({
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
+  const isNumber = typeof value === 'number' || /^\d+(\.\d+)?%?$/.test(value);
   return (
     <div className="bg-slate-50 border border-slate-200 rounded py-3">
-      <div className="text-2xl font-semibold">{value}</div>
+      <div className={`${isNumber ? 'text-2xl' : 'text-sm px-2 min-h-8 flex items-center justify-center'} font-semibold`}>
+        {value}
+      </div>
       <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
     </div>
   );
@@ -699,7 +782,9 @@ function AnswersPanel({
                     </span>
                   )}
                 </div>
-                <p className="text-slate-800 whitespace-pre-wrap">{answer.text}</p>
+                <p className="text-slate-800 whitespace-pre-wrap">
+                  {'displayText' in answer ? (answer.displayText ?? answer.text ?? '-') : answer.text}
+                </p>
               </div>
               <button onClick={() => onAction(answer.answerId)} className={`text-xs px-2 py-1 rounded ${actionClassName}`}>
                 {actionLabel}
@@ -715,6 +800,10 @@ function AnswersPanel({
 
 // Related questions panel for a selected theme
 interface VerbatimAnswer { answerId: string; text: string; roleLabel: string | null; submissionId: string }
+interface RootCauseDetail {
+  id: string;
+  possibleRootCauses: string[];
+}
 interface RelatedQuestionRow {
   questionId: string;
   questionNumber: number;
@@ -728,9 +817,131 @@ interface RoleBreakdown { roleLabel: string; respondentCount: number; percentage
 interface ThemeDetail {
   id: string;
   totalRespondents: number;
+  possibleRootCauses: string[];
   questions: RelatedQuestionRow[];
   roles: RoleBreakdown[];
 }
+
+function RootCausePanel({ base, themeId }: { base: string; themeId: string }) {
+  const [selectedRootCauses, setSelectedRootCauses] = useState<string[]>([]);
+  const [customRootCause, setCustomRootCause] = useState('');
+  const [submittedRootCauses, setSubmittedRootCauses] = useState<string[]>([]);
+  const detail = useQuery({
+    queryKey: ['theme-detail', themeId],
+    queryFn: () => api<RootCauseDetail>(`${base}/${themeId}/detail`),
+  });
+
+  useEffect(() => {
+    setSelectedRootCauses([]);
+    setCustomRootCause('');
+    setSubmittedRootCauses([]);
+  }, [themeId]);
+
+  const causes = detail.data?.possibleRootCauses ?? [];
+  const toggleRootCause = (cause: string) => {
+    setSelectedRootCauses((current) =>
+      current.includes(cause)
+        ? current.filter((item) => item !== cause)
+        : [...current, cause],
+    );
+  };
+  const submitRootCauses = () => {
+    const custom = customRootCause.trim();
+    const submitted = custom
+      ? [...selectedRootCauses, custom]
+      : selectedRootCauses;
+    setSubmittedRootCauses([...new Set(submitted)]);
+  };
+  const canSubmit = selectedRootCauses.length > 0 || customRootCause.trim().length > 0;
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 p-5">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h4 className="font-semibold text-sm">Possible root causes</h4>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Select all root causes that apply to this blocker, or add one if none fit.
+          </p>
+        </div>
+        <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+          {causes.length || 10} options
+        </span>
+      </div>
+      {detail.isLoading ? (
+        <div className="text-sm text-slate-500">Loading root causes...</div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {causes.map((cause, idx) => (
+              <label
+                key={cause}
+                className={`flex items-start gap-2 rounded border px-3 py-2 text-sm cursor-pointer ${
+                  selectedRootCauses.includes(cause)
+                    ? 'border-amber-400 bg-amber-50 text-amber-950'
+                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  name={`root-cause-${themeId}`}
+                  checked={selectedRootCauses.includes(cause)}
+                  onChange={() => toggleRootCause(cause)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="text-[11px] font-semibold uppercase text-slate-400 mr-1">
+                    {idx + 1}.
+                  </span>
+                  {cause}
+                </span>
+              </label>
+            ))}
+          </div>
+          <label className="block">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+              Root cause not listed?
+            </span>
+            <textarea
+              rows={3}
+              value={customRootCause}
+              onChange={(e) => setCustomRootCause(e.target.value)}
+              placeholder="Type the root cause you believe is driving this blocker..."
+              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={submitRootCauses}
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            Submit Root Causes
+          </button>
+          <div className="rounded border border-slate-200 bg-slate-50 p-3">
+            <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Selected Root Causes
+            </h5>
+            {submittedRootCauses.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">No root causes submitted yet.</p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {submittedRootCauses.map((cause, idx) => (
+                  <li key={cause} className="text-sm text-slate-800">
+                    <span className="text-[11px] font-semibold uppercase text-slate-400 mr-1">
+                      {idx + 1}.
+                    </span>
+                    {cause}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RelatedQuestionsPanel({ base, themeId }: { base: string; themeId: string }) {
   const detail = useQuery({
     queryKey: ['theme-detail', themeId],
@@ -797,8 +1008,8 @@ function RelatedQuestionsPanel({ base, themeId }: { base: string; themeId: strin
       {questions.length > 0 && (
         <div className="border-t border-slate-200">
           <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-            <h5 className="font-semibold text-sm text-slate-900">Respondent answers</h5>
-            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">verbatim, grouped by question</span>
+            <h5 className="font-semibold text-sm text-slate-900">Respondent evidence</h5>
+            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">grouped by question</span>
           </div>
           <div className="divide-y divide-slate-100">
             {questions.map((q) => (
@@ -809,12 +1020,14 @@ function RelatedQuestionsPanel({ base, themeId }: { base: string; themeId: strin
                   <span className="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">{q.respondentCount} resp - {q.percentage.toFixed(0)}%</span>
                 </div>
                 {q.answers.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic ml-5">No verbatim text captured for this question.</p>
+                  <p className="text-xs text-slate-400 italic ml-5">No answer-level evidence captured for this question.</p>
                 ) : (
                   <ul className="space-y-1.5 ml-5">
                     {q.answers.map((a) => (
                       <li key={a.answerId} className="text-sm text-slate-700 bg-slate-50 border-l-2 border-emerald-400 px-3 py-2 rounded-r">
-                        <span className="italic">"{a.text}"</span>
+                        <span className={a.text.startsWith('Score ') || a.text.startsWith('Value ') ? '' : 'italic'}>
+                          {a.text.startsWith('Score ') || a.text.startsWith('Value ') ? a.text : `"${a.text}"`}
+                        </span>
                         {a.roleLabel && <span className="ml-2 text-[11px] text-slate-500 not-italic">- {a.roleLabel}</span>}
                       </li>
                     ))}

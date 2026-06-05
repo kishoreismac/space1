@@ -133,6 +133,53 @@ const toAlert = (r: Rule): CrossPatternAlert => ({
   message: `${r.crossPattern}: ${r.diagnosis}. ${r.leadershipAction}.`,
 });
 
+export interface CrossPatternThemeRule extends CrossPatternAlert {
+  dimensions: DimensionCode[];
+  matches: (scores: Scores) => boolean;
+}
+
+const dimensionsFromRule = (r: Rule): DimensionCode[] => {
+  const found = new Set<DimensionCode>();
+  const haystack = `${r.patternId} ${r.trigger} ${r.crossPattern}`;
+  for (const code of ['S', 'P', 'A', 'C', 'E'] as DimensionCode[]) {
+    if (new RegExp(`\\b${code}\\b`).test(haystack)) found.add(code);
+  }
+  return [...found];
+};
+
+const toThemeRule = (r: Rule): CrossPatternThemeRule => ({
+  ...toAlert(r),
+  dimensions: dimensionsFromRule(r),
+  matches: r.matches,
+});
+
+export function allCrossPatternThemeRules(): CrossPatternThemeRule[] {
+  const seenGroups = new Set<string>();
+  return CROSS_PATTERN_RULES
+    .filter((r) => {
+      const group = DUPLICATE_PATTERN_GROUPS[r.patternId];
+      if (!group) return true;
+      if (seenGroups.has(group)) return false;
+      seenGroups.add(group);
+      return true;
+    })
+    .map(toThemeRule);
+}
+
+export function matchedCrossPatternThemeRules(scores: Scores): CrossPatternThemeRule[] {
+  const seenGroups = new Set<string>();
+  return CROSS_PATTERN_RULES
+    .filter((r) => {
+      if (!r.matches(scores)) return false;
+      const group = DUPLICATE_PATTERN_GROUPS[r.patternId];
+      if (!group) return true;
+      if (seenGroups.has(group)) return false;
+      seenGroups.add(group);
+      return true;
+    })
+    .map(toThemeRule);
+}
+
 /**
  * Cross-pattern alerts for Phase 1 triage.
  * The psych-safety alert is fired when Q7 average drops below 2.5;

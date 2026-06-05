@@ -662,7 +662,7 @@ function QuestionCard({
   const scale: number[] = [];
   for (let i = min; i <= max; i++) scale.push(i);
 
-  return (
+  return ( 
     <div
       id={`q-${q.questionNumber}`}
       className={`q-card${isAnswered ? ` done done-${dimCls}` : ''}`}
@@ -672,6 +672,7 @@ function QuestionCard({
         <p className="q-text">
           {q.text}
           {q.isReverseScored && <span className="rev-tag">Reverse</span>}
+          
         </p>
       </div>
       {q.blockerSignal && <div className="q-sig">↳ {q.blockerSignal}</div>}

@@ -8,6 +8,10 @@ export const ThemeCreateSchema = z.object({
   themeName: z.string().min(1).max(200),
   description: z.string().max(2000).optional().nullable(),
   sourceQuestionId: z.string().optional().nullable(),
+  sourceType: z
+    .enum(['Numeric Question', 'Text Question', 'Cross-Dimension Metric'])
+    .optional()
+    .nullable(),
   representativeQuote: z.string().max(2000).optional().nullable(),
   jtbdStatement: z.string().max(2000).optional().nullable(),
   status: ThemeStatusEnum.optional(),
@@ -22,6 +26,7 @@ export const ThemeSchema = z.object({
   themeName: z.string(),
   description: z.string().nullable(),
   sourceQuestionId: z.string().nullable(),
+  sourceType: z.string().nullable(),
   representativeQuote: z.string().nullable(),
   jtbdStatement: z.string().nullable(),
   status: ThemeStatusEnum,
