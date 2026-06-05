@@ -56,14 +56,18 @@ export interface DimensionScore {
 }
 
 export interface CrossPatternAlert {
-  code:
-    | 'TOOLING_HARM'
-    | 'HIDDEN_TOIL'
-    | 'HEROICS_ATTRITION'
-    | 'COORDINATION_OVERHEAD'
-    | 'PSYCH_SAFETY_GATE';
+  code: string;
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   message: string;
+  patternId?: string;
+  crossPattern?: string;
+  trigger?: string;
+  scoreSignal?: string;
+  diagnosis?: string;
+  whatItMeans?: string;
+  likelyRootCause?: string;
+  validationEvidence?: string;
+  leadershipAction?: string;
 }
 
 export interface AIFeasibilityInput {

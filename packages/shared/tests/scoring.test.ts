@@ -149,19 +149,19 @@ describe('cross-pattern alerts', () => {
 
   it('fires tooling-harm when S and E both ≤ 2.9', () => {
     const alerts = crossPatternAlerts(make(2.4, 3.1, 3.8, 2.6, 2.2));
-    expect(alerts.find((a) => a.code === 'TOOLING_HARM')).toBeTruthy();
+    expect(alerts.find((a) => a.code === 'S-E-01')).toBeTruthy();
   });
   it('fires hidden-toil when A ≥ 3.5 and S ≤ 2.9', () => {
     const alerts = crossPatternAlerts(make(2.4, 3.1, 3.8, 3.5, 3.5));
-    expect(alerts.find((a) => a.code === 'HIDDEN_TOIL')).toBeTruthy();
+    expect(alerts.find((a) => a.code === 'S-A-01')).toBeTruthy();
   });
   it('fires heroics when S ≤ 2.9 and P ≥ 3.0', () => {
-    const alerts = crossPatternAlerts(make(2.4, 3.1, 3.0, 3.5, 3.5));
-    expect(alerts.find((a) => a.code === 'HEROICS_ATTRITION')).toBeTruthy();
+    const alerts = crossPatternAlerts(make(2.4, 3.8, 3.0, 3.5, 2.6));
+    expect(alerts.find((a) => a.code === 'M-02')).toBeTruthy();
   });
   it('fires coordination-overhead when C ≤ 2.9 and 3.0 ≤ P ≤ 3.4', () => {
-    const alerts = crossPatternAlerts(make(3.5, 3.2, 3.5, 2.6, 3.5));
-    expect(alerts.find((a) => a.code === 'COORDINATION_OVERHEAD')).toBeTruthy();
+    const alerts = crossPatternAlerts(make(3.5, 3.2, 3.8, 2.6, 3.5));
+    expect(alerts.find((a) => a.code === 'M-07')).toBeTruthy();
   });
   it('fires psych-safety gate when Q7 avg < 2.5', () => {
     const alerts = crossPatternAlerts(make(3.5, 3.5, 3.5, 3.5, 3.5), 2.3);
@@ -169,7 +169,24 @@ describe('cross-pattern alerts', () => {
   });
   it('no alerts when all healthy', () => {
     const alerts = crossPatternAlerts(make(4.0, 4.0, 4.0, 4.0, 4.0), 4.0);
-    expect(alerts).toHaveLength(0);
+    expect(alerts.find((a) => a.code === 'M-13')).toBeTruthy();
+  });
+  it('treats 3.0 as low for cross-pattern detection', () => {
+    const alerts = crossPatternAlerts(make(3.0, 3.0, 3.2, 3.2, 3.2));
+    expect(alerts.find((a) => a.code === 'S-P-01')).toBeTruthy();
+  });
+  it('treats 3.5 as high for cross-pattern detection', () => {
+    const alerts = crossPatternAlerts(make(3.0, 3.5, 3.5, 3.5, 3.5));
+    expect(alerts.find((a) => a.code === 'P-S-01')).toBeTruthy();
+  });
+  it('treats scores between 3.0 and 3.5 as moderate where rules allow moderate performance', () => {
+    const alerts = crossPatternAlerts(make(2.8, 3.2, 3.5, 3.5, 3.5));
+    expect(alerts.find((a) => a.code === 'M-06')).toBeTruthy();
+  });
+  it('does not return reciprocal duplicate pair patterns', () => {
+    const alerts = crossPatternAlerts(make(2.8, 3.2, 3.2, 2.8, 3.2));
+    expect(alerts.find((a) => a.code === 'S-C-01')).toBeTruthy();
+    expect(alerts.find((a) => a.code === 'C-S-01')).toBeFalsy();
   });
 });
 

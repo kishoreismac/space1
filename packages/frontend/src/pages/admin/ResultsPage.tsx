@@ -25,6 +25,15 @@ interface Alert {
   code: string;
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   message: string;
+  patternId?: string;
+  crossPattern?: string;
+  trigger?: string;
+  scoreSignal?: string;
+  diagnosis?: string;
+  whatItMeans?: string;
+  likelyRootCause?: string;
+  validationEvidence?: string;
+  leadershipAction?: string;
 }
 
 interface OverviewResponse {
@@ -113,6 +122,49 @@ const DIMENSION_ACTIONS: Record<string, Record<string, string>> = {
     EXCELLENT: 'Share platform investments with the wider org.',
   },
 };
+
+type DimensionSignal = 'Low' | 'Moderate' | 'High' | 'No data';
+
+const DIMENSION_DETECTIONS: Record<string, Record<Exclude<DimensionSignal, 'No data'>, string>> = {
+  S: {
+    Low: 'Developer morale and wellbeing are under pressure.',
+    Moderate: 'Developer morale and wellbeing need monitoring.',
+    High: 'Developer morale and wellbeing look healthy.',
+  },
+  P: {
+    Low: 'Delivery outcomes and quality are under pressure.',
+    Moderate: 'Delivery outcomes are mixed and need monitoring.',
+    High: 'Delivery outcomes look healthy.',
+  },
+  A: {
+    Low: 'Work is not flowing with enough visible activity.',
+    Moderate: 'Activity levels are stable but should be checked against outcomes.',
+    High: 'Activity is high and should be checked for healthy flow versus overload.',
+  },
+  C: {
+    Low: 'Communication and collaboration are under pressure.',
+    Moderate: 'Communication is workable but may still create friction.',
+    High: 'Communication and collaboration look healthy.',
+  },
+  E: {
+    Low: 'Workflow, tooling, or system efficiency is under pressure.',
+    Moderate: 'Efficiency is mixed and needs friction monitoring.',
+    High: 'Efficiency and flow look healthy.',
+  },
+};
+
+function dimensionSignal(score: number | null): DimensionSignal {
+  if (score === null) return 'No data';
+  if (score <= 3.0) return 'Low';
+  if (score < 3.5) return 'Moderate';
+  return 'High';
+}
+
+function dimensionDetection(d: DimensionResult): string {
+  const signal = dimensionSignal(d.averageScore);
+  if (signal === 'No data') return 'Not enough responses to detect this dimension.';
+  return DIMENSION_DETECTIONS[d.code]?.[signal] ?? 'Dimension signal detected.';
+}
 
 function crossPatternsFor(dims: DimensionResult[]): Array<{ tone: 'red' | 'amber' | 'green'; message: string }> {
   const get = (c: string) => dims.find((d) => d.code === c);
@@ -305,7 +357,7 @@ function ResultsBody({ companyId, campaignId }: { companyId: string; campaignId:
       </ActivityBlock>
 
       <ActivityBlock num="2" title="Cross-Pattern Detection" subtitle="Auto-generated from dimension scores" defaultOpen>
-        <CrossPatternList dims={o.dimensions} />
+        <CrossPatternList alerts={o.alerts} />
       </ActivityBlock>
 
       <ActivityBlock num="3" title="Executive Summary Template" subtitle="Send to VP Engineering same day" defaultOpen>
@@ -353,6 +405,7 @@ function ScoreCardsRow({ dims }: { dims: DimensionResult[] }) {
         const d = dims.find((x) => x.code === code);
         const theme = themeOf(code);
         const drop = d && d.trendDelta !== null && d.trendDelta <= -0.4;
+        const signal = dimensionSignal(d?.averageScore ?? null);
         return (
           <div
             key={code}
@@ -390,6 +443,14 @@ function ScoreCardsRow({ dims }: { dims: DimensionResult[] }) {
               </div>
             )}
             <div className="mt-1 text-[10px] text-slate-400">n={d?.responseCount ?? 0}</div>
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="text-[11px] font-semibold text-slate-800">
+                {DIM_NAMES[code]}: {signal}
+              </div>
+              <p className="mt-1 text-xs text-slate-600 leading-snug">
+                {d ? dimensionDetection(d) : 'Not enough responses to detect this dimension.'}
+              </p>
+            </div>
           </div>
         );
       })}
@@ -408,6 +469,7 @@ function TriageTable({ dims }: { dims: DimensionResult[] }) {
             <th className="py-2 px-3 text-right">Score</th>
             <th className="py-2 px-3">Band</th>
             <th className="py-2 px-3">Priority</th>
+            <th className="py-2 px-3">Detection</th>
             <th className="py-2 px-3 text-right">Trend vs Prev</th>
             <th className="py-2 px-3 text-center">Drop &gt; 0.4?</th>
             <th className="py-2 px-3">Immediate Action</th>
@@ -440,6 +502,12 @@ function TriageTable({ dims }: { dims: DimensionResult[] }) {
                   {d.trendOverridden && (
                     <span className="ml-1 text-[10px] bg-red-600 text-white px-1.5 py-0.5 rounded">↑ trend</span>
                   )}
+                </td>
+                <td className="py-2 px-3 text-xs text-slate-700 leading-snug min-w-[220px]">
+                  <div className="font-semibold text-slate-900">
+                    {DIM_NAMES[d.code]}: {dimensionSignal(d.averageScore)}
+                  </div>
+                  <div>{dimensionDetection(d)}</div>
                 </td>
                 <td className="py-2 px-3 text-right font-mono text-xs">
                   {d.trendDelta === null ? (
@@ -490,18 +558,38 @@ function DecisionGate() {
   );
 }
 
-function CrossPatternList({ dims }: { dims: DimensionResult[] }) {
-  const alerts = useMemo(() => crossPatternsFor(dims), [dims]);
-  const toneCls: Record<'red' | 'amber' | 'green', string> = {
-    red: 'border-red-300 bg-red-50 text-red-900',
-    amber: 'border-amber-300 bg-amber-50 text-amber-900',
-    green: 'border-emerald-300 bg-emerald-50 text-emerald-900',
+function CrossPatternList({ alerts }: { alerts: Alert[] }) {
+  const visibleAlerts = alerts.length
+    ? alerts
+    : [{
+        code: 'NO_PATTERN',
+        severity: 'INFO' as const,
+        crossPattern: 'No high-risk cross-pattern detected',
+        trigger: 'Current SPACE scores do not match a configured risk pattern',
+        diagnosis: 'No high-risk cross-dimension pattern detected at current score levels.',
+        leadershipAction: 'Monitor trend between cycles.',
+        message: 'No high-risk cross-dimension pattern detected at current score levels. Monitor trend between cycles.',
+      }];
+  const toneCls: Record<Alert['severity'], string> = {
+    CRITICAL: 'border-red-300 bg-red-50 text-red-950',
+    WARNING: 'border-amber-300 bg-amber-50 text-amber-950',
+    INFO: 'border-emerald-300 bg-emerald-50 text-emerald-950',
   };
   return (
     <ul className="space-y-2">
-      {alerts.map((a, i) => (
-        <li key={i} className={`border-l-4 rounded px-4 py-3 text-sm leading-snug ${toneCls[a.tone]}`}>
-          {a.message}
+      {visibleAlerts.map((a) => (
+        <li key={a.patternId ?? a.code} className={`border-l-4 rounded px-4 py-3 text-sm leading-snug ${toneCls[a.severity]}`}>
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className="font-mono text-[11px] font-semibold tracking-wide">{a.patternId ?? a.code}</span>
+            <span className="font-semibold">{a.crossPattern ?? a.message}</span>
+          </div>
+          {a.trigger && <div className="text-xs font-mono opacity-80 mb-2">Trigger: {a.trigger}</div>}
+          {(a.diagnosis || a.whatItMeans) && (
+            <p className="mb-2">
+              {a.diagnosis}
+              {a.whatItMeans ? ` ${a.whatItMeans}` : ''}
+            </p>
+          )}
         </li>
       ))}
     </ul>
