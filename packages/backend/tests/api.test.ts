@@ -18,7 +18,7 @@ describe('health', () => {
 
 describe('scoring API', () => {
   it('scores a submission', async () => {
-    const answers = Array.from({ length: 50 }, (_, i) => ({
+    const answers = Array.from({ length: 51 }, (_, i) => ({
       questionNumber: i + 1,
       rawValue: OPEN.has(i + 1) ? null : 4,
     }));
@@ -30,7 +30,7 @@ describe('scoring API', () => {
   it('scores a campaign with cross-pattern alerts', async () => {
     // Build a submission where post-reverse every dimension averages 2 →
     // S≤2.9 AND E≤2.9 ⇒ TOOLING_HARM fires.
-    const lowAnswers = Array.from({ length: 50 }, (_, i) => {
+    const lowAnswers = Array.from({ length: 51 }, (_, i) => {
       const q = i + 1;
       if (OPEN.has(q)) return { questionNumber: q, rawValue: null };
       // raw 4 for reverse (becomes 2 post-reverse), raw 2 for the rest

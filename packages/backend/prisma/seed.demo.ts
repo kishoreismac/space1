@@ -9,7 +9,7 @@
  *   • 38 synthesised submissions whose dimension averages match
  *       S=2.4  P=3.1  A=3.8  C=2.6  E=2.2  (prev S=2.7 P=3.1 A=4.3 C=3.0 E=2.8)
  *   • ScoreSummary snapshots
- *   • 4 open-text themes (3 promoted, 1 investigate)
+ *   • Open-text themes (3 promoted, 1 investigate)
  *   • 3 blockers with AI-feasibility tagging
  *   • 1 completed journey-mapping session
  */
@@ -138,6 +138,16 @@ async function main() {
   }
 
   const openSeeds: Record<number, string[]> = {
+    8: [
+      'Frequent priority changes make the sprint feel unstable.',
+      'Too much after-hours support work drains energy before planned work starts.',
+      'I spend too much time fighting local setup issues instead of building.',
+    ],
+    9: [
+      'I want clearer growth expectations for senior engineering roles.',
+      'Architecture decisions feel too top-down and leave little room for ownership.',
+      'Feedback arrives late, after the work is already shipped.',
+    ],
     10: [
       'Local environment breaks weekly after platform upgrades.',
       'Constant context switching between PRs, prod issues and meetings.',
@@ -145,21 +155,71 @@ async function main() {
       'Tooling feels like it fights me every day.',
       'Promotion paths are unclear for senior engineers.',
     ],
+    18: [
+      'Unclear acceptance criteria made me rebuild the same feature twice.',
+      'A dependency team changed behavior without telling us before release.',
+      'I could not validate edge cases because the test data was incomplete.',
+    ],
+    19: [
+      'Late product clarification is the biggest source of rework.',
+      'Technical debt around shared services makes simple changes risky.',
+      'Review feedback often discovers requirements that were not in the ticket.',
+    ],
     20: [
       'Spec changed mid-sprint after I had already cut three PRs.',
       "Blocked four days waiting for a security review I couldn't expedite.",
       'Flaky integration env caused a hotfix rollback I owned.',
+    ],
+    28: [
+      'Status meetings and ad hoc pings consume time without moving work forward.',
+      'Manual release checklist work takes attention away from planned delivery.',
+      'Debugging environment issues looks like activity but produces no feature progress.',
+    ],
+    29: [
+      'Incident pings interrupt deep work most often in the afternoon.',
+      'Slack escalations pull me away from coding several times a day.',
+      'Meetings split the day into fragments too small for complex work.',
+    ],
+    30: [
+      'Waiting for CI and security approvals creates the longest queue time.',
+      'PR reviews sit idle when the few senior reviewers are overloaded.',
+      'Environment provisioning delays block testing for half a sprint.',
+    ],
+    38: [
+      'A cross-team dependency changed scope without a shared design review.',
+      'We lost two days because ownership of a platform bug was unclear.',
+      'Planning did not surface a contract mismatch until integration.',
+    ],
+    39: [
+      'Decision latency shows up most often around API ownership.',
+      'Tickets often lack acceptance criteria for failure modes.',
+      'Nobody knows who owns older services when they break.',
     ],
     40: [
       'Platform team rolled out a breaking helm chart change with no notice.',
       'API contract change from data-services landed quietly in their changelog.',
       'On-call rotation skews heavily to two senior folks.',
     ],
+    48: [
+      'The flaky test suite wastes the most time in normal development.',
+      'Local Docker setup fails after dependency updates.',
+      'CI logs do not explain the actual failure clearly enough.',
+    ],
+    49: [
+      'Runbooks are stale, so incident diagnosis depends on tribal knowledge.',
+      'Service ownership docs are hard to find during production issues.',
+      'Past architecture decisions are scattered across old chat threads.',
+    ],
     50: [
       'Replace the legacy Jenkins pipeline with something deterministic.',
       'Give us reproducible local dev environments in under five minutes.',
       'Automate the boilerplate for new microservices end-to-end.',
       'Make incident RCA tooling actually useful instead of grep-the-logs.',
+    ],
+    51: [
+      'The biggest SDLC blocker is waiting across handoffs from planning to release.',
+      'End-to-end delivery slows down most when requirements, CI, and approvals stack up.',
+      'Support interrupts planned work because production ownership is unclear.',
     ],
   };
 

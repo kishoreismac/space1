@@ -2,7 +2,8 @@
  * Production seed.
  * Creates:
  *   1. One SUPER_ADMIN user (credentials from env)
- *   2. The canonical SPACE 50-question questionnaire as a PUBLISHED global template
+ *   2. The canonical SPACE 50-question questionnaire plus one SDLC prompt
+ *      as a PUBLISHED global template
  *
  * NO company / team / campaign / response data is created.
  * For demo data run `npm run seed:demo`.
@@ -34,30 +35,30 @@ async function main() {
   }
 
   const templateTitle = 'SPACE 50 — Developer Productivity (Global Template)';
+  const expandedTemplateTitle = 'SPACE 50+1 — Developer Productivity (Global Template)';
   const existingTemplate = await prisma.questionnaire.findFirst({
     where: { companyId: null, title: templateTitle },
   });
-  if (existingTemplate) {
-    console.log('• Global SPACE-50 template already exists, skipping');
-  } else {
-    const q = await prisma.questionnaire.create({
-      data: {
-        companyId: null,
-        title: templateTitle,
-        description:
-          'Canonical 50-question SPACE Developer Productivity questionnaire. Reusable across companies.',
-        version: 1,
-        status: 'PUBLISHED',
-        estimatedMinutes: 10,
-        isAnonymous: true,
-      },
-    });
+
+  const createQuestions = async (questionnaireId: string) => {
     const dims = await Promise.all(
       SPACE_DIMENSIONS.map((d, i) =>
-        prisma.questionDimension.create({
-          data: {
-            questionnaireId: q.id,
+        prisma.questionDimension.upsert({
+          where: {
+            questionnaireId_code: {
+              questionnaireId,
+              code: d.code,
+            },
+          },
+          create: {
+            questionnaireId,
             code: d.code,
+            name: d.name,
+            description: d.description,
+            color: d.color,
+            displayOrder: i,
+          },
+          update: {
             name: d.name,
             description: d.description,
             color: d.color,
@@ -68,9 +69,15 @@ async function main() {
     );
     const dimByCode = new Map(dims.map((d) => [d.code, d.id]));
     for (const def of SPACE_QUESTIONS) {
-      await prisma.question.create({
-        data: {
-          questionnaireId: q.id,
+      await prisma.question.upsert({
+        where: {
+          questionnaireId_questionNumber: {
+            questionnaireId,
+            questionNumber: def.number,
+          },
+        },
+        create: {
+          questionnaireId,
           dimensionId: dimByCode.get(def.dimensionCode)!,
           questionNumber: def.number,
           questionText: def.text,
@@ -84,9 +91,94 @@ async function main() {
           highLabel: def.highLabel,
           displayOrder: def.number,
         },
+        update: {
+          dimensionId: dimByCode.get(def.dimensionCode)!,
+          questionText: def.text,
+          questionType: def.type,
+          blockerSignal: def.blockerSignal,
+          isReverseScored: def.isReverseScored,
+          isRequired: def.isRequired,
+          minScale: def.minScale,
+          maxScale: def.maxScale,
+          lowLabel: def.lowLabel,
+          highLabel: def.highLabel,
+          displayOrder: def.number,
+          status: 'ACTIVE',
+        },
       });
     }
-    console.log(`✓ Created global SPACE-50 questionnaire (50 questions)`);
+  };
+
+  if (existingTemplate) {
+    await prisma.questionnaire.update({
+      where: { id: existingTemplate.id },
+      data: {
+        description:
+          'Canonical SPACE Developer Productivity questionnaire: 50 main questions plus one overall SDLC blocker prompt.',
+        estimatedMinutes: 12,
+      },
+    });
+
+    const answerCount = await prisma.answer.count({
+      where: { question: { questionnaireId: existingTemplate.id } },
+    });
+    if (answerCount > 0) {
+      const expandedTemplate = await prisma.questionnaire.findFirst({
+        where: { companyId: null, title: expandedTemplateTitle },
+      });
+      if (!expandedTemplate) {
+        const q = await prisma.questionnaire.create({
+          data: {
+            companyId: null,
+            title: expandedTemplateTitle,
+            description:
+              'Canonical SPACE Developer Productivity questionnaire: 50 main questions plus one overall SDLC blocker prompt.',
+            version: (existingTemplate.version ?? 1) + 1,
+            status: 'PUBLISHED',
+            estimatedMinutes: 12,
+            isAnonymous: true,
+          },
+        });
+        await createQuestions(q.id);
+        console.log(`✓ Created expanded SPACE 50+1 questionnaire (${SPACE_QUESTIONS.length} questions)`);
+      } else {
+        await prisma.question.deleteMany({
+          where: {
+            questionnaireId: expandedTemplate.id,
+            questionNumber: { notIn: SPACE_QUESTIONS.map((q) => q.number) },
+          },
+        });
+        await createQuestions(expandedTemplate.id);
+        console.log(`✓ Synced expanded SPACE 50+1 questionnaire (${SPACE_QUESTIONS.length} questions)`);
+      }
+      console.log(
+        `• Existing SPACE-50 template has answers, so it was preserved (${answerCount} answers found)`,
+      );
+    } else {
+      await prisma.question.deleteMany({
+        where: {
+          questionnaireId: existingTemplate.id,
+          questionNumber: { notIn: SPACE_QUESTIONS.map((q) => q.number) },
+        },
+      });
+      await createQuestions(existingTemplate.id);
+      console.log(`✓ Synced global SPACE-50 questionnaire (${SPACE_QUESTIONS.length} questions)`);
+    }
+  } else {
+    const q = await prisma.questionnaire.create({
+      data: {
+        companyId: null,
+        title: templateTitle,
+        description:
+          'Canonical SPACE Developer Productivity questionnaire: 50 main questions plus one overall SDLC blocker prompt.',
+        version: 1,
+        status: 'PUBLISHED',
+        estimatedMinutes: 12,
+        isAnonymous: true,
+      },
+    });
+    await createQuestions(q.id);
+    console.log(`✓ Created global SPACE-50 questionnaire (${SPACE_QUESTIONS.length} questions)`);
   }
 }
 

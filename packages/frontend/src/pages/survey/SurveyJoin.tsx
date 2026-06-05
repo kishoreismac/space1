@@ -35,7 +35,7 @@ export default function SurveyJoin() {
         {error ? (
           <>
             <h1 style={{ fontFamily: "'Fraunces',serif", fontSize: '1.5rem', marginBottom: '.5rem' }}>
-              Survey unavailable
+              Survey submitted!!
             </h1>
             <p style={{ color: 'var(--muted)' }}>{error}</p>
           </>

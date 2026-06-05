@@ -122,8 +122,8 @@ describe('results overview', () => {
       .get(`/api/companies/${companyId}/campaigns/${campaignId}/results/open-text`)
       .set('authorization', `Bearer ${token}`);
     expect(r.status).toBe(200);
-    // 4 open-text questions × 3 submissions = 12
-    expect(r.body.items.length).toBe(12);
+    // 16 open-text questions × 3 submissions = 48
+    expect(r.body.items.length).toBe(48);
   });
 
   it('persists a score snapshot', async () => {

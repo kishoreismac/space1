@@ -24,6 +24,7 @@ const ROLE_OPTIONS = [
 
 const DIM_ORDER = ['S', 'P', 'A', 'C', 'E'] as const;
 type DimKey = (typeof DIM_ORDER)[number];
+const OVERALL_SDLC_BLOCKER_QUESTION_NUMBER = 51;
 
 const DIM_META: Record<DimKey, { name: string; desc: string; cls: string }> = {
   S: {
@@ -83,7 +84,7 @@ export default function SurveyLanding() {
       <div className="survey-theme">
         <main style={{ padding: '4rem 1.5rem', textAlign: 'center' }}>
           <h1 style={{ fontFamily: "'Fraunces',serif", fontSize: '1.5rem', marginBottom: '.5rem' }}>
-            Survey unavailable
+            Survey submitted!!
           </h1>
           <p style={{ color: 'var(--muted)' }}>{err.message}</p>
         </main>
@@ -128,6 +129,7 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
   const grouped = useMemo(() => {
     const m = new Map<DimKey, PublicQuestion[]>();
     for (const q of questionnaire.questions) {
+      if (q.questionNumber === OVERALL_SDLC_BLOCKER_QUESTION_NUMBER) continue;
       const k = dimKey(q.dimensionCode);
       const arr = m.get(k) ?? [];
       arr.push(q);
@@ -135,6 +137,13 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
     }
     return m;
   }, [questionnaire.questions]);
+  const overallSdlcQuestion = useMemo(
+    () =>
+      questionnaire.questions.find(
+        (q) => q.questionNumber === OVERALL_SDLC_BLOCKER_QUESTION_NUMBER,
+      ) ?? null,
+    [questionnaire.questions],
+  );
 
   const totalScalable = useMemo(
     () => questionnaire.questions.filter((q) => q.type !== 'OPEN_TEXT').length,
@@ -372,8 +381,47 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
                 </div>
               );
             })}
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.75rem',
+                justifyContent: 'center',
+                marginTop: '1.5rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <button
+                type="button"
+                onClick={exportCsv}
+                className="submit-btn"
+                style={{
+                  background: 'var(--ink)',
+                  color: '#fff',
+                  padding: '.65rem 1.2rem',
+                  fontSize: 12,
+                }}
+              >
+                Download as CSV
+              </button>
+              <button
+                type="button"
+                onClick={exportJson}
+                className="submit-btn"
+                style={{
+                  background: 'var(--ink)',
+                  color: '#fff',
+                  padding: '.65rem 1.2rem',
+                  fontSize: 12,
+                }}
+              >
+                Download as JSON
+              </button>
+            </div>
           </div>
         </main>
+        <div id="toast" className={toastMsg ? 'show' : ''}>
+          {toastMsg}
+        </div>
       </div>
     );
   }
@@ -486,7 +534,7 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
               </select>
             </div>
             <div className="field-group">
-              <label className="field-label">Primary language</label>
+              <label className="field-label">Programming Language</label>
               <input
                 className="field-input"
                 value={primaryTechnology}
@@ -531,6 +579,25 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
           );
         })}
 
+        {overallSdlcQuestion && (
+          <section className="dim-section">
+            <div className="dim-header dh-e">
+              <div className="dim-letter dim-letter-wide dl-e">SDLC</div>
+              <div className="dim-info">
+                <h2>Overall SDLC blocker</h2>
+                <p>Planning, coding, review, testing, release, operations, and support</p>
+              </div>
+            </div>
+            <QuestionCard
+              question={overallSdlcQuestion}
+              answer={answers[overallSdlcQuestion.questionNumber]}
+              dimCls="e"
+              onScale={(v) => setAnswer(overallSdlcQuestion.questionNumber, { rawValue: v })}
+              onText={(v) => setAnswer(overallSdlcQuestion.questionNumber, { textValue: v })}
+            />
+          </section>
+        )}
+
         {/* Submit */}
         <div className="submit-section">
           <h3>Ready to submit?</h3>
@@ -563,48 +630,6 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
               ? 'Submitting…'
               : `Submit ${completed}/${totalQuestions} responses ▶`}
           </button>
-          <div
-            style={{
-              display: 'flex',
-              gap: '0.75rem',
-              justifyContent: 'center',
-              marginTop: '0.75rem',
-              flexWrap: 'wrap',
-            }}
-          >
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="submit-btn"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                color: '#E5E7EB',
-                border: '1px solid rgba(255,255,255,0.18)',
-                padding: '.55rem 1.1rem',
-                fontSize: 12,
-              }}
-            >
-              ⬇ Download as CSV
-            </button>
-            <button
-              type="button"
-              onClick={exportJson}
-              className="submit-btn"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                color: '#E5E7EB',
-                border: '1px solid rgba(255,255,255,0.18)',
-                padding: '.55rem 1.1rem',
-                fontSize: 12,
-              }}
-            >
-              ⬇ Download as JSON
-            </button>
-          </div>
-          <p className="submit-note">
-            Required: {totalScalable} scaled questions ·{' '}
-            {questionnaire.questions.filter((q) => q.type === 'OPEN_TEXT').length} open-ended
-          </p>
         </div>
       </main>
 
@@ -653,7 +678,7 @@ function QuestionCard({
 
       {isOpen ? (
         <>
-          <span className="open-prompt">Optional — your words help us interpret the data.</span>
+          <span className="open-prompt">Open-ended — your words help us interpret the data.</span>
           <textarea
             className="q-open"
             placeholder="Type your answer…"

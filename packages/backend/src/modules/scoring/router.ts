@@ -21,7 +21,7 @@ import { HttpError } from '../../middleware/error.js';
 export const scoringRouter = Router();
 
 const RawAnswerSchema = z.object({
-  questionNumber: z.number().int().min(1).max(50),
+  questionNumber: z.number().int().min(1).max(51),
   rawValue: z.number().int().min(1).max(5).nullable(),
   textValue: z.string().nullable().optional(),
 });

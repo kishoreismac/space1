@@ -303,7 +303,7 @@ bulkUploadRouter.post(
 // Creates `respondents` synthetic LIKERT submissions whose answers all sit
 // at the provided dimension score (rounded to nearest integer 1-5). This
 // gives the downstream pipeline real Answer rows to aggregate without
-// asking the user to hand-craft 50 question values.
+// asking the user to hand-craft every individual question value.
 bulkUploadRouter.post(
   '/manual',
   requireRole('SUPER_ADMIN', 'COMPANY_ADMIN', 'ANALYST'),

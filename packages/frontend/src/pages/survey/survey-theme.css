@@ -231,6 +231,11 @@
   flex-shrink: 0;
   color: #fff;
 }
+.survey-theme .dim-letter-wide {
+  width: 58px;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
 .survey-theme .dl-s { background: var(--s); }
 .survey-theme .dl-p { background: var(--p); }
 .survey-theme .dl-a { background: var(--a); }
@@ -478,13 +483,9 @@
 .survey-theme .dim-bar-fill {
   height: 100%;
   border-radius: 5px;
+  background: var(--s);
   transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.survey-theme .bf-s { background: var(--s); }
-.survey-theme .bf-p { background: var(--p); }
-.survey-theme .bf-a { background: var(--a); }
-.survey-theme .bf-c { background: var(--c); }
-.survey-theme .bf-e { background: var(--e); }
 .survey-theme .dim-row-val {
   width: 42px;
   text-align: right;

@@ -133,8 +133,8 @@ describe('themes', () => {
       .get(`${base()}/untagged-answers?excludeTaggedBy=${themeId}`)
       .set('authorization', `Bearer ${token}`);
     expect(r.status).toBe(200);
-    // 4 open-text questions × 2 respondents = 8 answers, none tagged yet
-    expect(r.body.items.length).toBe(8);
+    // 16 open-text questions × 2 respondents = 32 answers, none tagged yet
+    expect(r.body.items.length).toBe(32);
   });
 
   it('tags two answers from different submissions', async () => {

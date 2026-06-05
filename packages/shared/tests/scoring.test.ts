@@ -85,17 +85,17 @@ describe('scoreSubmission', () => {
   it('computes per-dimension averages with reverse applied', () => {
     // Pick a tiny subset of the canonical questionnaire to keep the test focused.
     const qs = SPACE_QUESTIONS.filter((q) => q.dimensionCode === 'S' && q.type === 'LIKERT');
-    // S has Q1,2,4,5,6,7,9 normal and Q3,8 reverse. 9 Likert questions in S.
+    // S has Q1,2,4,5,6,7 normal and Q3 reverse. 7 Likert questions in S.
     const answers: RawAnswer[] = qs.map((q) => ({
       questionNumber: q.number,
       rawValue: 4,
     }));
     const result = scoreSubmission(SPACE_QUESTIONS, answers);
     const s = result.find((r) => r.code === 'S')!;
-    // 7 normal answers scored 4; 2 reverse scored 2. avg = (7*4 + 2*2)/9 = 32/9 ≈ 3.56
-    expect(s.averageScore).toBeCloseTo(3.56, 1);
+    // 6 normal answers scored 4; 1 reverse scored 2. avg = (6*4 + 1*2)/7 = 26/7 ≈ 3.71
+    expect(s.averageScore).toBeCloseTo(3.71, 1);
     expect(s.band).toBe('HEALTHY');
-    expect(s.responseCount).toBe(9);
+    expect(s.responseCount).toBe(7);
   });
 
   it('handles missing answers without crashing', () => {
@@ -223,19 +223,24 @@ describe('AI feasibility', () => {
 });
 
 describe('canonical questionnaire shape', () => {
-  it('has exactly 50 questions', () => {
-    expect(SPACE_QUESTIONS).toHaveLength(50);
+  it('has 50 main questions plus one overall SDLC blocker question', () => {
+    expect(SPACE_QUESTIONS).toHaveLength(51);
+    expect(SPACE_QUESTIONS.at(-1)?.number).toBe(51);
+    expect(SPACE_QUESTIONS.at(-1)?.type).toBe('OPEN_TEXT');
   });
   it('has 10 questions per dimension', () => {
     for (const code of ['S', 'P', 'A', 'C', 'E'] as const) {
-      expect(SPACE_QUESTIONS.filter((q) => q.dimensionCode === code)).toHaveLength(10);
+      const main = SPACE_QUESTIONS.filter((q) => q.dimensionCode === code && q.number <= 50);
+      expect(main).toHaveLength(10);
+      expect(main.filter((q) => q.type === 'LIKERT')).toHaveLength(7);
+      expect(main.filter((q) => q.type === 'OPEN_TEXT')).toHaveLength(3);
     }
   });
-  it('has 18 reverse-scored questions', () => {
-    expect(SPACE_QUESTIONS.filter((q) => q.isReverseScored)).toHaveLength(18);
+  it('has 13 reverse-scored questions', () => {
+    expect(SPACE_QUESTIONS.filter((q) => q.isReverseScored)).toHaveLength(13);
   });
-  it('has 4 open-text questions (Q10, 20, 40, 50)', () => {
+  it('has 3 open-text questions per dimension plus Q51', () => {
     const open = SPACE_QUESTIONS.filter((q) => q.type === 'OPEN_TEXT').map((q) => q.number);
-    expect(open).toEqual([10, 20, 40, 50]);
+    expect(open).toEqual([8, 9, 10, 18, 19, 20, 28, 29, 30, 38, 39, 40, 48, 49, 50, 51]);
   });
 });

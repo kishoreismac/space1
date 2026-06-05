@@ -63,12 +63,12 @@ describe('questionnaires read', () => {
     expect(r.body.items.some((q: { id: string }) => q.id === questionnaireId)).toBe(true);
   });
 
-  it('returns 50 questions with dimensionCode', async () => {
+  it('returns 51 questions with dimensionCode', async () => {
     const r = await request(app)
       .get(`/api/questionnaires/${questionnaireId}`)
       .set('authorization', `Bearer ${accessToken}`);
     expect(r.status).toBe(200);
-    expect(r.body.questions).toHaveLength(50);
+    expect(r.body.questions).toHaveLength(51);
     expect(r.body.questions[0].dimensionCode).toBeTruthy();
   });
 });
@@ -128,7 +128,7 @@ describe('public survey flow', () => {
   it('GET /api/public/survey/:token returns context and marks invite STARTED', async () => {
     const r = await request(app).get(`/api/public/survey/${inviteToken}`);
     expect(r.status).toBe(200);
-    expect(r.body.questionnaire.questions).toHaveLength(50);
+    expect(r.body.questionnaire.questions).toHaveLength(51);
     expect(r.body.invite.status).toBe('STARTED');
   });
 
