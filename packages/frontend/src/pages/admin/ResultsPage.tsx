@@ -123,6 +123,49 @@ const DIMENSION_ACTIONS: Record<string, Record<string, string>> = {
   },
 };
 
+type DimensionSignal = 'Low' | 'Moderate' | 'High' | 'No data';
+
+const DIMENSION_DETECTIONS: Record<string, Record<Exclude<DimensionSignal, 'No data'>, string>> = {
+  S: {
+    Low: 'Developer morale and wellbeing are under pressure.',
+    Moderate: 'Developer morale and wellbeing need monitoring.',
+    High: 'Developer morale and wellbeing look healthy.',
+  },
+  P: {
+    Low: 'Delivery outcomes and quality are under pressure.',
+    Moderate: 'Delivery outcomes are mixed and need monitoring.',
+    High: 'Delivery outcomes look healthy.',
+  },
+  A: {
+    Low: 'Work is not flowing with enough visible activity.',
+    Moderate: 'Activity levels are stable but should be checked against outcomes.',
+    High: 'Activity is high and should be checked for healthy flow versus overload.',
+  },
+  C: {
+    Low: 'Communication and collaboration are under pressure.',
+    Moderate: 'Communication is workable but may still create friction.',
+    High: 'Communication and collaboration look healthy.',
+  },
+  E: {
+    Low: 'Workflow, tooling, or system efficiency is under pressure.',
+    Moderate: 'Efficiency is mixed and needs friction monitoring.',
+    High: 'Efficiency and flow look healthy.',
+  },
+};
+
+function dimensionSignal(score: number | null): DimensionSignal {
+  if (score === null) return 'No data';
+  if (score <= 3.0) return 'Low';
+  if (score < 3.5) return 'Moderate';
+  return 'High';
+}
+
+function dimensionDetection(d: DimensionResult): string {
+  const signal = dimensionSignal(d.averageScore);
+  if (signal === 'No data') return 'Not enough responses to detect this dimension.';
+  return DIMENSION_DETECTIONS[d.code]?.[signal] ?? 'Dimension signal detected.';
+}
+
 function crossPatternsFor(dims: DimensionResult[]): Array<{ tone: 'red' | 'amber' | 'green'; message: string }> {
   const get = (c: string) => dims.find((d) => d.code === c);
   const S = get('S')?.averageScore;
@@ -362,6 +405,7 @@ function ScoreCardsRow({ dims }: { dims: DimensionResult[] }) {
         const d = dims.find((x) => x.code === code);
         const theme = themeOf(code);
         const drop = d && d.trendDelta !== null && d.trendDelta <= -0.4;
+        const signal = dimensionSignal(d?.averageScore ?? null);
         return (
           <div
             key={code}
@@ -399,6 +443,14 @@ function ScoreCardsRow({ dims }: { dims: DimensionResult[] }) {
               </div>
             )}
             <div className="mt-1 text-[10px] text-slate-400">n={d?.responseCount ?? 0}</div>
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="text-[11px] font-semibold text-slate-800">
+                {DIM_NAMES[code]}: {signal}
+              </div>
+              <p className="mt-1 text-xs text-slate-600 leading-snug">
+                {d ? dimensionDetection(d) : 'Not enough responses to detect this dimension.'}
+              </p>
+            </div>
           </div>
         );
       })}
@@ -417,6 +469,7 @@ function TriageTable({ dims }: { dims: DimensionResult[] }) {
             <th className="py-2 px-3 text-right">Score</th>
             <th className="py-2 px-3">Band</th>
             <th className="py-2 px-3">Priority</th>
+            <th className="py-2 px-3">Detection</th>
             <th className="py-2 px-3 text-right">Trend vs Prev</th>
             <th className="py-2 px-3 text-center">Drop &gt; 0.4?</th>
             <th className="py-2 px-3">Immediate Action</th>
@@ -449,6 +502,12 @@ function TriageTable({ dims }: { dims: DimensionResult[] }) {
                   {d.trendOverridden && (
                     <span className="ml-1 text-[10px] bg-red-600 text-white px-1.5 py-0.5 rounded">↑ trend</span>
                   )}
+                </td>
+                <td className="py-2 px-3 text-xs text-slate-700 leading-snug min-w-[220px]">
+                  <div className="font-semibold text-slate-900">
+                    {DIM_NAMES[d.code]}: {dimensionSignal(d.averageScore)}
+                  </div>
+                  <div>{dimensionDetection(d)}</div>
                 </td>
                 <td className="py-2 px-3 text-right font-mono text-xs">
                   {d.trendDelta === null ? (
