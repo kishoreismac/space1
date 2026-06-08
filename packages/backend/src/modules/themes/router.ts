@@ -1,12 +1,9 @@
 import { Router } from 'express';
 import { ZodError, z } from 'zod';
 import {
-  allCrossPatternThemeRules,
-  matchedCrossPatternThemeRules,
   ThemeCreateSchema,
   ThemeTagRequestSchema,
   ThemeUpdateSchema,
-  type DimensionCode,
 } from '@space/shared';
 import { config } from '../../config/env.js';
 import { HttpError } from '../../middleware/error.js';
@@ -154,52 +151,6 @@ function scoreLabel(answer: {
   return answer.question.questionType === 'LIKERT'
     ? `Score ${scored}${answer.question.isReverseScored ? ` (raw ${raw}, reverse scored)` : ''}`
     : `Value ${raw}`;
-}
-
-function scoresByDimension(
-  answers: Array<{ scoredValue: number | null; question: { dimension: { code: string } } }>,
-): Record<DimensionCode, number | null> {
-  const buckets: Record<DimensionCode, number[]> = { S: [], P: [], A: [], C: [], E: [] };
-  for (const answer of answers) {
-    const code = answer.question.dimension.code as DimensionCode;
-    if (answer.scoredValue !== null && code in buckets) buckets[code].push(answer.scoredValue);
-  }
-  return (Object.keys(buckets) as DimensionCode[]).reduce((acc, code) => {
-    const vals = buckets[code];
-    acc[code] = vals.length
-      ? Math.round((vals.reduce((sum, value) => sum + value, 0) / vals.length) * 100) / 100
-      : null;
-    return acc;
-  }, {} as Record<DimensionCode, number | null>);
-}
-
-function evidenceAnswerIdsForCrossPattern(
-  answers: Array<{
-    id: string;
-    scoredValue: number | null;
-    question: { dimension: { code: string } };
-  }>,
-  scores: Record<DimensionCode, number | null>,
-  dimensions: DimensionCode[],
-): string[] {
-  const candidates = dimensions.length > 0
-    ? dimensions
-    : (Object.keys(scores) as DimensionCode[]);
-  const weakDimensions = candidates.filter((code) => (scores[code] ?? 5) <= 3);
-  const targetDimensions = weakDimensions.length > 0 ? weakDimensions : candidates;
-
-  const ids: string[] = [];
-  for (const code of targetDimensions) {
-    const best = answers
-      .filter((answer) => answer.question.dimension.code === code && answer.scoredValue !== null)
-      .sort((a, b) => {
-        const av = a.scoredValue ?? 99;
-        const bv = b.scoredValue ?? 99;
-        return weakDimensions.length > 0 ? av - bv : bv - av;
-      })[0];
-    if (best) ids.push(best.id);
-  }
-  return [...new Set(ids)];
 }
 
 const ROOT_CAUSE_LIBRARY: Array<{ match: RegExp; causes: string[] }> = [
@@ -378,7 +329,7 @@ themesRouter.get('/', async (req, res, next) => {
       return res.json({ items: [] });
     }
     const items = await prisma.openTextTheme.findMany({
-      where: { campaignId },
+      where: { campaignId, NOT: { sourceType: 'Cross-Dimension Metric' } },
       orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }, { createdAt: 'desc' }],
       include: {
         _count: { select: { tags: true } },
@@ -1106,16 +1057,6 @@ themesRouter.post(
         });
       }
 
-      const crossRules = allCrossPatternThemeRules().filter((rule) => rule.severity !== 'INFO');
-      for (const rule of crossRules) {
-        await rememberTheme({
-          themeName: `${rule.patternId} · ${rule.crossPattern}`,
-          sourceType: 'Cross-Dimension Metric',
-          description: `${rule.diagnosis}. Trigger: ${rule.trigger}. Likely root cause: ${rule.likelyRootCause}.`,
-          jtbdStatement: `When ${rule.likelyRootCause}, I want ${rule.leadershipAction}, so the team can improve sustainable delivery.`,
-        });
-      }
-
       for (const answer of allAnswers) {
         const signal = (answer.question.blockerSignal ?? '').trim();
         if (!signal) continue;
@@ -1132,31 +1073,6 @@ themesRouter.post(
 
         if (hasOpenEvidence || hasLowNumericEvidence) {
           if (await tagAnswer(themeId, answer.id)) totalTagged += 1;
-        }
-      }
-
-      const answersBySubmission = new Map<string, typeof allAnswers>();
-      for (const answer of allAnswers) {
-        if (answer.scoredValue === null) continue;
-        const group = answersBySubmission.get(answer.submissionId) ?? [];
-        group.push(answer);
-        answersBySubmission.set(answer.submissionId, group);
-      }
-
-      for (const answersForSubmission of answersBySubmission.values()) {
-        const scores = scoresByDimension(answersForSubmission);
-        const matches = matchedCrossPatternThemeRules(scores).filter((rule) => rule.severity !== 'INFO');
-        for (const rule of matches) {
-          const themeId = themeIdByName.get(`${rule.patternId} · ${rule.crossPattern}`);
-          if (!themeId) continue;
-          const evidenceIds = evidenceAnswerIdsForCrossPattern(
-            answersForSubmission,
-            scores,
-            rule.dimensions,
-          );
-          for (const answerId of evidenceIds) {
-            if (await tagAnswer(themeId, answerId)) totalTagged += 1;
-          }
         }
       }
 
@@ -1210,7 +1126,7 @@ themesRouter.post(
         updated,
         totalTagged,
         questionnaireThemes: firstQuestionBySignal.size,
-        crossPatternThemes: crossRules.length,
+        crossPatternThemes: 0,
         clusters: clusters.length,
         totalRespondents,
       });
@@ -1224,7 +1140,7 @@ themesRouter.post(
         totalTagged,
         totalRespondents,
         questionnaireThemeCount: firstQuestionBySignal.size,
-        crossPatternThemeCount: crossRules.length,
+        crossPatternThemeCount: 0,
         clusterThemeCount: clusters.length,
         generatedCandidateCount: summaryThemes.length,
         themes: visibleThemes,
@@ -1237,7 +1153,7 @@ themesRouter.post(
         openTextClusterInputCount: answersForClusters.length,
         clustersFound: clusters.length,
         questionnaireThemeCount: firstQuestionBySignal.size,
-        crossPatternThemeCount: crossRules.length,
+        crossPatternThemeCount: 0,
         generatedCandidateCount: summaryThemes.length,
         visibleThemeCount: visibleThemes.length,
         created,
@@ -1253,7 +1169,7 @@ themesRouter.post(
         themes: visibleThemes,
         incremental,
         questionnaireThemeCount: firstQuestionBySignal.size,
-        crossPatternThemeCount: crossRules.length,
+        crossPatternThemeCount: 0,
         clusterThemeCount: clusters.length,
       });
     } catch (e) { next(e); }

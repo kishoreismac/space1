@@ -528,8 +528,8 @@ function SignalTriangulationMatrix({ base, campaignId }: { base: string; campaig
               Auto analyse Phase 2 themes and create validated blockers
             </h3>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-stone-700">
-              Pulls all evidence-backed Phase 2 blocker themes, low survey dimensions, and journey signals into
-              the triangulation matrix. These blockers feed the P5 Validated Blocker Registry and AI
+              Pulls evidence-backed Phase 2 blocker themes into the triangulation matrix. These blockers feed
+              the P5 Validated Blocker Registry and AI
               Feasibility Matrix automatically.
             </p>
           </div>
@@ -829,7 +829,7 @@ function NewBlockerForm({
         <input
           value={openTextEvidence}
           onChange={(event) => setOpenTextEvidence(event.target.value)}
-          placeholder="e.g. Numeric question, open-text question, or cross-dimension metric evidence from Phase 2"
+          placeholder="e.g. Numeric question or open-text question evidence from Phase 2"
           className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
         />
       </label>

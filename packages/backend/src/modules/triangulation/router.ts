@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { ZodError, z } from 'zod';
 import {
-  allCrossPatternThemeRules,
   BlockerCreateSchema,
   BlockerUpdateSchema,
   SignalCreateSchema,
@@ -56,11 +55,10 @@ function handleZod(err: ZodError): HttpError {
   return new HttpError(400, 'Invalid request body', err.issues);
 }
 
-type Phase2ThemeSource = 'Numeric Question' | 'Text Question' | 'Cross-Dimension Metric';
+type Phase2ThemeSource = 'Numeric Question' | 'Text Question';
 
 function normalizeThemeSource(sourceType: string | null | undefined): Phase2ThemeSource {
   if (sourceType === 'Numeric Question') return 'Numeric Question';
-  if (sourceType === 'Cross-Dimension Metric') return 'Cross-Dimension Metric';
   return 'Text Question';
 }
 
@@ -71,7 +69,6 @@ function blockerSourcePhaseFromTheme(sourceType: string | null | undefined): str
 function evidenceLabelFromThemeSource(sourceType: string | null | undefined): string {
   const source = normalizeThemeSource(sourceType);
   if (source === 'Numeric Question') return 'Numeric question evidence';
-  if (source === 'Cross-Dimension Metric') return 'Cross-dimension metric evidence';
   return 'Open-text question evidence';
 }
 
@@ -108,16 +105,27 @@ function inferSdlcPhase(...values: Array<string | null | undefined>): string {
   return 'Cross-SDLC';
 }
 
-function crossPatternDimensionCode(themeName: string): string | null {
-  const rule = allCrossPatternThemeRules().find((r) => themeName.startsWith(`${r.patternId} ·`));
-  if (!rule || rule.dimensions.length === 0) return null;
-  return rule.dimensions.join(' + ');
-}
-
 async function loadCampaign(companyId: string, campaignId: string) {
   const c = await prisma.surveyCampaign.findUnique({ where: { id: campaignId } });
   if (!c || c.companyId !== companyId) throw new HttpError(404, 'Campaign not found');
   return c;
+}
+
+function phase2BlockerWhere(campaignId: string) {
+  return {
+    campaignId,
+    NOT: {
+      OR: [
+        { evidenceSummary: { startsWith: 'Cross-dimension metric evidence:' } },
+        {
+          AND: [
+            { title: { startsWith: 'Low ' } },
+            { evidenceSummary: { contains: 'survey mean' } },
+          ],
+        },
+      ],
+    },
+  };
 }
 
 // ─── Blockers ──────────────────────────────────────────────────────────
@@ -168,7 +176,7 @@ triangulationRouter.put(
         throw new HttpError(400, 'Cycle must be current or previous');
       }
       assertCompanyAccess(req.auth, companyId);
-      await loadCampaign(companyId, campaignId);
+      const campaign = await loadCampaign(companyId, campaignId);
 
       const body = DoraMetricsSchema.parse(req.body);
       const data = { ...emptyDoraMetrics(), ...body };
@@ -228,7 +236,7 @@ triangulationRouter.get('/matrix', async (req, res, next) => {
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
     const items = await prisma.blocker.findMany({
-      where: { campaignId },
+      where: phase2BlockerWhere(campaignId),
       orderBy: [{ severity: 'asc' }, { createdAt: 'desc' }],
       include: {
         signals: {
@@ -252,7 +260,7 @@ triangulationRouter.get('/blockers', async (req, res, next) => {
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
     const items = await prisma.blocker.findMany({
-      where: { campaignId },
+      where: phase2BlockerWhere(campaignId),
       orderBy: [{ severity: 'asc' }, { createdAt: 'desc' }],
       include: {
         _count: { select: { signals: true } },
@@ -298,7 +306,7 @@ triangulationRouter.post(
         campaignId: string;
       };
       assertCompanyAccess(req.auth, companyId);
-      await loadCampaign(companyId, campaignId);
+      const campaign = await loadCampaign(companyId, campaignId);
       const body = BlockerCreateSchema.parse(req.body);
       const created = await prisma.blocker.create({
         data: {
@@ -337,7 +345,7 @@ triangulationRouter.patch(
         blockerId: string;
       };
       assertCompanyAccess(req.auth, companyId);
-      await loadCampaign(companyId, campaignId);
+      const campaign = await loadCampaign(companyId, campaignId);
       const existing = await prisma.blocker.findUnique({ where: { id: blockerId } });
       if (!existing || existing.campaignId !== campaignId)
         throw new HttpError(404, 'Blocker not found');
@@ -493,8 +501,7 @@ triangulationRouter.delete(
 );
 
 // ─── Candidate suggestions ─────────────────────────────────────────────
-// Auto-derive candidate blockers from low-scoring dimensions, top themes,
-// and red journey steps to seed the triangulation workflow.
+// Auto-derive candidate blockers from Phase 2 themes to seed the triangulation workflow.
 triangulationRouter.get('/candidates', async (req, res, next) => {
   try {
     const { companyId, campaignId } = req.params as {
@@ -504,30 +511,11 @@ triangulationRouter.get('/candidates', async (req, res, next) => {
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
 
-    // Quant dimensions with avg < 3.5
-    const dimAgg = await prisma.$queryRawUnsafe<
-      { code: string; name: string; avg: number; count: number }[]
-    >(
-      `SELECT d.code as code, d.name as name,
-              AVG(CAST(a.numericValue AS REAL)) as avg,
-              COUNT(*) as count
-         FROM Answer a
-         JOIN Submission s ON s.id = a.submissionId
-         JOIN Question q ON q.id = a.questionId
-         JOIN QuestionDimension d ON d.id = q.dimensionId
-        WHERE s.campaignId = ?
-          AND s.status = 'COMPLETED'
-          AND a.numericValue IS NOT NULL
-        GROUP BY d.id
-        HAVING AVG(CAST(a.numericValue AS REAL)) < 3.5
-        ORDER BY avg ASC`,
-      campaignId,
-    );
-
     // Phase 2 blocker themes with actual respondent evidence
     const themes = await prisma.openTextTheme.findMany({
       where: {
         campaignId,
+        NOT: { sourceType: 'Cross-Dimension Metric' },
         OR: [{ respondentCount: { gt: 0 } }, { tags: { some: {} } }],
       },
       orderBy: [{ respondentCount: 'desc' }, { themeName: 'asc' }],
@@ -543,33 +531,10 @@ triangulationRouter.get('/candidates', async (req, res, next) => {
       },
     });
 
-    // Red journey steps
-    const redSteps = await prisma.journeyMapStep.findMany({
-      where: {
-        session: { campaignId },
-        frictionLevel: 'RED',
-      },
-      orderBy: { dotVotes: 'desc' },
-      take: 5,
-      include: { session: { select: { facilitator: true } } },
-    });
-
     res.json({
-      dimensions: dimAgg.map((d) => ({
-        code: d.code,
-        name: d.name,
-        avgScore: Number(d.avg.toFixed(2)),
-        responses: Number(d.count),
-      })),
+      dimensions: [],
       themes,
-      journeySteps: redSteps.map((s) => ({
-        id: s.id,
-        stepName: s.stepName,
-        dotVotes: s.dotVotes,
-        rootCause: s.rootCause,
-        jtbdStatement: s.jtbdStatement,
-        facilitator: s.session.facilitator,
-      })),
+      journeySteps: [],
     });
   } catch (e) {
     next(e);
@@ -577,8 +542,7 @@ triangulationRouter.get('/candidates', async (req, res, next) => {
 });
 
 // ─── Auto-seed validated blockers from survey signals ─────────────────
-// Creates a Blocker for each candidate (low dimension + promoted theme + red step)
-// and attaches ValidationSignal records linking back to the survey/theme/journey
+// Creates a Blocker for each Phase 2 theme and attaches ValidationSignal records linking back to theme
 // evidence. Idempotent: skips candidates with an existing Blocker of the same title.
 triangulationRouter.post(
   '/auto-seed',
@@ -592,28 +556,11 @@ triangulationRouter.post(
       assertCompanyAccess(req.auth, companyId);
       await loadCampaign(companyId, campaignId);
 
-      // ── Reuse the candidate query logic inline ──
-      const dimAgg = await prisma.$queryRawUnsafe<
-        { code: string; name: string; avg: number; count: number }[]
-      >(
-        `SELECT d.code as code, d.name as name,
-                AVG(CAST(a.numericValue AS REAL)) as avg,
-                COUNT(*) as count
-           FROM Answer a
-           JOIN Submission s ON s.id = a.submissionId
-           JOIN Question q ON q.id = a.questionId
-           JOIN QuestionDimension d ON d.id = q.dimensionId
-          WHERE s.campaignId = ?
-            AND s.status = 'COMPLETED'
-            AND a.numericValue IS NOT NULL
-          GROUP BY d.id
-          HAVING AVG(CAST(a.numericValue AS REAL)) < 3.5
-          ORDER BY avg ASC`,
-        campaignId,
-      );
+      // ── Reuse the Phase 2 theme candidate logic inline ──
       const themes = await prisma.openTextTheme.findMany({
         where: {
           campaignId,
+          NOT: { sourceType: 'Cross-Dimension Metric' },
           OR: [{ respondentCount: { gt: 0 } }, { tags: { some: {} } }],
         },
         orderBy: [{ respondentCount: 'desc' }, { themeName: 'asc' }],
@@ -630,28 +577,20 @@ triangulationRouter.post(
       const sourceQuestionDimensionById = new Map(
         sourceQuestions.map((q) => [q.id, q.dimension.code]),
       );
-      const redSteps = await prisma.journeyMapStep.findMany({
-        where: { session: { campaignId }, frictionLevel: 'RED' },
-        orderBy: { dotVotes: 'desc' },
-        take: 10,
-      });
       const totalRespondents = await prisma.submission.count({
         where: { campaignId, status: 'COMPLETED' },
       });
 
-      const existing = await prisma.blocker.findMany({ where: { campaignId } });
+      const existing = await prisma.blocker.findMany({ where: phase2BlockerWhere(campaignId) });
       const existingByTitle = new Map(existing.map((b) => [b.title.toLowerCase(), b]));
-      const existingTitles = new Set(existingByTitle.keys());
 
       let created = 0;
       const summary: Array<{ id: string; title: string; severity: string; sources: number }> = [];
 
-      const sevFromScore = (avg: number) => (avg < 2.0 ? 'P1' : avg < 2.5 ? 'P2' : avg < 3.0 ? 'P3' : 'P4');
       const sevFromTheme = (percentage: number) =>
         percentage >= 40 ? 'P1' : percentage >= 25 ? 'P2' : percentage >= 10 ? 'P3' : 'P4';
       const dimensionCodeFromTheme = (t: (typeof themes)[number]) =>
-        (t.sourceQuestionId ? sourceQuestionDimensionById.get(t.sourceQuestionId) ?? null : null) ??
-        (t.sourceType === 'Cross-Dimension Metric' ? crossPatternDimensionCode(t.themeName) : null);
+        t.sourceQuestionId ? sourceQuestionDimensionById.get(t.sourceQuestionId) ?? null : null;
       const upsertThemeSignal = async (blockerId: string, t: (typeof themes)[number]) => {
         const signalName = `${t.themeName} (${normalizeThemeSource(t.sourceType)})`;
         const existingSignal = await prisma.validationSignal.findFirst({
@@ -685,68 +624,7 @@ triangulationRouter.post(
         });
       };
 
-      // 1) From low dimensions
-      for (const d of dimAgg) {
-        const title = `Low ${d.name} signal (avg ${Number(d.avg).toFixed(2)})`;
-        if (existingTitles.has(title.toLowerCase())) continue;
-        const matchedThemes = themes.filter((t) =>
-          t.themeName.toLowerCase().includes(d.name.toLowerCase()) ||
-          (t.description ?? '').toLowerCase().includes(d.name.toLowerCase()) ||
-          (t.sourceType === 'Numeric Question' && t.description?.includes(` ${d.code} dimension`)),
-        );
-        const sources = 1 + (matchedThemes.length > 0 ? 1 : 0);
-        const phase2Evidence = matchedThemes.map((t) =>
-          `${t.themeName} [${normalizeThemeSource(t.sourceType)}: ${t.respondentCount} respondents, ${t.percentage}%]`,
-        );
-        const b = await prisma.blocker.create({
-          data: {
-            campaignId,
-            title,
-            description: `Auto-seeded from Phase 1 survey scores. Dimension averaged ${Number(d.avg).toFixed(2)} across ${d.count} responses.`,
-            sourcePhase: matchedThemes.length > 0 ? 'PHASE 2 - Numeric Question' : 'TRIANGULATION',
-            dimensionCode: d.code,
-            sdlcPhase: inferSdlcPhase(title, d.name, phase2Evidence.join(' ')),
-            severity: sevFromScore(Number(d.avg)),
-            evidenceSummary:
-              `Numeric question evidence: survey mean ${Number(d.avg).toFixed(2)} / 5 (n=${d.count}).` +
-              (phase2Evidence.length > 0
-                ? ` Phase 2 corroborating evidence: ${phase2Evidence.join('; ')}.`
-                : ' No Phase 2 theme corroboration yet.'),
-            reachPercentage: totalRespondents > 0 ? 100 : null,
-            aiFit: 'INVESTIGATE',
-            status: 'OPEN',
-          },
-        });
-        await prisma.validationSignal.create({
-          data: {
-            campaignId,
-            blockerId: b.id,
-            signalType: 'SURVEY',
-            signalName: `${d.name} dimension mean`,
-            evidenceValue: Number(d.avg).toFixed(2),
-            evidenceDescription: `Avg ${d.name} score across ${d.count} responses.`,
-            confirmed: true,
-          },
-        });
-        for (const t of matchedThemes) {
-          await prisma.validationSignal.create({
-            data: {
-              campaignId,
-              blockerId: b.id,
-              signalType: 'THEME',
-              signalName: `${t.themeName} (${normalizeThemeSource(t.sourceType)})`,
-              evidenceValue: `${t.respondentCount} respondents (${t.percentage}%)`,
-              evidenceDescription: themeEvidenceSummary(t),
-              confirmed: t.status === 'PROMOTE',
-            },
-          });
-        }
-        existingTitles.add(title.toLowerCase());
-        created += 1;
-        summary.push({ id: b.id, title, severity: b.severity, sources });
-      }
-
-      // 2) From promoted themes not already covered
+      // From Phase 2 themes not already covered
       for (const t of themes) {
         const title = t.themeName;
         const existingThemeBlocker = existingByTitle.get(title.toLowerCase());
@@ -790,42 +668,7 @@ triangulationRouter.post(
           },
         });
         await upsertThemeSignal(b.id, t);
-        existingTitles.add(title.toLowerCase());
         existingByTitle.set(title.toLowerCase(), b);
-        created += 1;
-        summary.push({ id: b.id, title, severity: sev, sources: 1 });
-      }
-
-      // 3) From red journey steps
-      for (const s of redSteps) {
-        const title = s.stepName;
-        if (existingTitles.has(title.toLowerCase())) continue;
-        const sev = s.dotVotes >= 5 ? 'P1' : s.dotVotes >= 3 ? 'P2' : 'P3';
-        const b = await prisma.blocker.create({
-          data: {
-            campaignId,
-            title,
-            description: s.rootCause ?? `Auto-seeded from Phase 4 journey workshop (${s.dotVotes} dot-votes).`,
-            sourcePhase: 'JOURNEY',
-            sdlcPhase: inferSdlcPhase(s.stepName, s.rootCause, s.jtbdStatement),
-            severity: sev,
-            evidenceSummary: `Workshop dot-votes: ${s.dotVotes}. Root cause: ${s.rootCause ?? '—'}.`,
-            aiFit: 'CANDIDATE',
-            status: 'OPEN',
-          },
-        });
-        await prisma.validationSignal.create({
-          data: {
-            campaignId,
-            blockerId: b.id,
-            signalType: 'JOURNEY_MAP',
-            signalName: `Journey step: ${s.stepName}`,
-            evidenceValue: `${s.dotVotes} dot-votes`,
-            evidenceDescription: s.rootCause,
-            confirmed: true,
-          },
-        });
-        existingTitles.add(title.toLowerCase());
         created += 1;
         summary.push({ id: b.id, title, severity: sev, sources: 1 });
       }

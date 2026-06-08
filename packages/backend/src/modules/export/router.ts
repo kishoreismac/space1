@@ -19,6 +19,23 @@ function toCsv(headers: string[], rows: unknown[][]): string {
   return lines.join('\r\n') + '\r\n';
 }
 
+function phase2BlockerWhere(campaignId: string) {
+  return {
+    campaignId,
+    NOT: {
+      OR: [
+        { evidenceSummary: { startsWith: 'Cross-dimension metric evidence:' } },
+        {
+          AND: [
+            { title: { startsWith: 'Low ' } },
+            { evidenceSummary: { contains: 'survey mean' } },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 function sendCsv(res: import('express').Response, filename: string, body: string) {
   res.setHeader('content-type', 'text/csv; charset=utf-8');
   res.setHeader('content-disposition', `attachment; filename="${filename}"`);
@@ -77,7 +94,7 @@ exportRouter.get('/blockers.csv', async (req, res, next) => {
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
     const blockers = await prisma.blocker.findMany({
-      where: { campaignId },
+      where: phase2BlockerWhere(campaignId),
       include: { feasibility: true, _count: { select: { signals: true } } },
       orderBy: [{ severity: 'asc' }, { createdAt: 'desc' }],
     });
@@ -115,7 +132,7 @@ exportRouter.get('/themes.csv', async (req, res, next) => {
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
     const themes = await prisma.openTextTheme.findMany({
-      where: { campaignId },
+      where: { campaignId, NOT: { sourceType: 'Cross-Dimension Metric' } },
       include: { _count: { select: { tags: true } } },
       orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }],
     });

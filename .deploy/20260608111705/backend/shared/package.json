@@ -1,0 +1,37 @@
+{
+  "name": "@space/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./scoring": {
+      "types": "./dist/scoring/index.d.ts",
+      "import": "./dist/scoring/index.js",
+      "default": "./dist/scoring/index.js"
+    },
+    "./questionnaire": {
+      "types": "./dist/questionnaire/space50.d.ts",
+      "import": "./dist/questionnaire/space50.js",
+      "default": "./dist/questionnaire/space50.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

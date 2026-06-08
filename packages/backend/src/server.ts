@@ -1,5 +1,8 @@
 import { createApp } from './app.js';
 import { config } from './config/env.js';
+import { ensureRuntimeDatabaseSchema } from './prisma/client.js';
+
+await ensureRuntimeDatabaseSchema();
 
 const app = createApp();
 app.listen(config.port, () => {

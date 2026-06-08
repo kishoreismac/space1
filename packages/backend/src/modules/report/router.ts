@@ -26,6 +26,23 @@ const DIMENSION_NAMES: Record<DimensionCode, string> = {
   E: 'Efficiency & Flow',
 };
 
+function phase2BlockerWhere(campaignId: string) {
+  return {
+    campaignId,
+    NOT: {
+      OR: [
+        { evidenceSummary: { startsWith: 'Cross-dimension metric evidence:' } },
+        {
+          AND: [
+            { title: { startsWith: 'Low ' } },
+            { evidenceSummary: { contains: 'survey mean' } },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 function previousAvgFor(
   c: { previousS: number | null; previousP: number | null; previousA: number | null; previousC: number | null; previousE: number | null },
   code: DimensionCode,
@@ -139,7 +156,7 @@ reportRouter.get('/', async (req, res, next) => {
 
     // ── Themes ───────────────────────────────────────────────────────
     const themes = await prisma.openTextTheme.findMany({
-      where: { campaignId },
+      where: { campaignId, NOT: { sourceType: 'Cross-Dimension Metric' } },
       orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }],
     });
 
@@ -172,7 +189,7 @@ reportRouter.get('/', async (req, res, next) => {
 
     // ── Blockers + Roadmap ───────────────────────────────────────────
     const blockerRows = await prisma.blocker.findMany({
-      where: { campaignId },
+      where: phase2BlockerWhere(campaignId),
       include: { feasibility: true, _count: { select: { signals: true } } },
     });
     blockerRows.sort(

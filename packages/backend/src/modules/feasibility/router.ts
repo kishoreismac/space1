@@ -41,6 +41,23 @@ async function loadBlocker(campaignId: string, blockerId: string) {
   return b;
 }
 
+function phase2BlockerWhere(campaignId: string) {
+  return {
+    campaignId,
+    NOT: {
+      OR: [
+        { evidenceSummary: { startsWith: 'Cross-dimension metric evidence:' } },
+        {
+          AND: [
+            { title: { startsWith: 'Low ' } },
+            { evidenceSummary: { contains: 'survey mean' } },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 // ─── Per-blocker feasibility upsert ────────────────────────────────────
 feasibilityRouter.get('/blockers/:blockerId/feasibility', async (req, res, next) => {
   try {
@@ -138,7 +155,7 @@ feasibilityRouter.get('/roadmap', async (req, res, next) => {
     await loadCampaign(companyId, campaignId);
 
     const blockers = await prisma.blocker.findMany({
-      where: { campaignId },
+      where: phase2BlockerWhere(campaignId),
       include: { feasibility: true },
     });
 
@@ -222,7 +239,7 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
 
     const [blockers, totalRespondents, dimRows] = await Promise.all([
       prisma.blocker.findMany({
-        where: { campaignId },
+        where: phase2BlockerWhere(campaignId),
         include: {
           feasibility: true,
           signals: {
@@ -388,7 +405,11 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
     }
 
     function signalSourceLabel(signal: typeof blockers[number]['signals'][number]): string {
-      if (signal.signalType === 'SURVEY') return 'Survey';
+      if (signal.signalType === 'SURVEY') {
+        return signal.signalName.startsWith('Cross-dimension metric:')
+          ? 'Cross-dimension metric'
+          : 'Survey';
+      }
       if (signal.signalType === 'THEME') return themeSourceLabel(signal.signalName);
       if (signal.signalType === 'DORA') return signal.signalName.includes('CURRENT') ? 'DORA data' : signal.signalName;
       if (signal.signalType === 'JOURNEY_MAP') return 'Journey map';

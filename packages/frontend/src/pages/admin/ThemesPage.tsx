@@ -400,7 +400,7 @@ function ThemesWorkspace({
             </li>
           ))}
           {!themes.isLoading && (themes.data?.items.length ?? 0) === 0 && (
-            <li className="text-sm text-slate-500 py-2">No themes yet. Click Auto Analyse to generate questionnaire, numeric, matrix, and text themes automatically.</li>
+            <li className="text-sm text-slate-500 py-2">No themes yet. Click Auto Analyse to generate questionnaire, numeric, and text themes automatically.</li>
           )}
         </ul>
       </aside>
@@ -505,7 +505,6 @@ function ThemeCreateForm({
         >
           <option value="Numeric Question">Numeric Question</option>
           <option value="Text Question">Text Question</option>
-          <option value="Cross-Dimension Metric">Cross-Dimension Metric</option>
         </select>
       </label>
       <label className="block">
