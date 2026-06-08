@@ -1,9 +1,15 @@
 import { Router } from 'express';
 import { ZodError, z } from 'zod';
 import {
+  allCrossPatternThemeRules,
   ThemeCreateSchema,
   ThemeTagRequestSchema,
   ThemeUpdateSchema,
+  matchedCrossPatternThemeRules,
+  scoreCampaign,
+  type DimensionCode,
+  type QuestionDef,
+  type RawAnswer,
 } from '@space/shared';
 import { config } from '../../config/env.js';
 import { HttpError } from '../../middleware/error.js';
@@ -31,6 +37,51 @@ async function totalCompletedRespondents(campaignId: string): Promise<number> {
   return prisma.submission.count({ where: { campaignId, status: 'COMPLETED' } });
 }
 
+/**
+ * Compute campaign-level SPACE dimension averages, reusing the shared scoring
+ * engine. Used to re-detect the cross-dimension metrics surfaced in Phase 1 triage
+ * so they can be turned into Phase 2 blockers.
+ */
+async function computeDimensionScores(
+  campaignId: string,
+  questionnaireId: string,
+): Promise<Record<DimensionCode, number | null>> {
+  const questions = await prisma.question.findMany({
+    where: { questionnaireId },
+    include: { dimension: true },
+    orderBy: { questionNumber: 'asc' },
+  });
+  const defs: QuestionDef[] = questions.map((q) => ({
+    number: q.questionNumber,
+    dimensionCode: q.dimension.code as DimensionCode,
+    text: q.questionText,
+    type: q.questionType as QuestionDef['type'],
+    isReverseScored: q.isReverseScored,
+    isRequired: q.isRequired,
+    minScale: q.minScale ?? undefined,
+    maxScale: q.maxScale ?? undefined,
+    lowLabel: q.lowLabel ?? undefined,
+    highLabel: q.highLabel ?? undefined,
+    blockerSignal: q.blockerSignal ?? undefined,
+  }));
+  const submissions = await prisma.submission.findMany({
+    where: { campaignId, status: 'COMPLETED' },
+    include: { answers: { include: { question: { select: { questionNumber: true } } } } },
+  });
+  const subs: RawAnswer[][] = submissions.map((s) =>
+    s.answers.map((a) => ({
+      questionNumber: a.question.questionNumber,
+      rawValue: a.numericValue ?? null,
+      textValue: a.textValue,
+    })),
+  );
+  const dims = scoreCampaign(defs, subs);
+  return Object.fromEntries(dims.map((d) => [d.code, d.averageScore])) as Record<
+    DimensionCode,
+    number | null
+  >;
+}
+
 const ThemeAiAnalyzeSchema = z.object({
   replaceExisting: z.boolean().default(true),
   minimumConfidence: z.number().min(0).max(1).default(0.5),
@@ -50,6 +101,87 @@ function statusFromPercentage(percentage: number): 'PROMOTE' | 'INVESTIGATE' | '
 
 function sourceTypeForQuestion(questionType: string | null | undefined): 'Numeric Question' | 'Text Question' {
   return questionType === 'OPEN_TEXT' ? 'Text Question' : 'Numeric Question';
+}
+
+function blockerNameFromCrossMetric(metric: {
+  diagnosis?: string;
+  likelyRootCause?: string;
+  crossPattern?: string;
+}): string {
+  const diagnosis = normalizeText(metric.diagnosis, 90);
+  if (diagnosis) return diagnosis;
+  const rootCause = normalizeText(metric.likelyRootCause, 90);
+  if (rootCause) return rootCause;
+  return normalizeText(metric.crossPattern, 90) ?? 'Cross-dimension blocker risk';
+}
+
+function crossMetricDescription(metric: {
+  crossPattern?: string;
+  trigger?: string;
+  whatItMeans?: string;
+  likelyRootCause?: string;
+}): string {
+  return (
+    `Derived from Phase 1 triage cross-dimension metric: ${metric.crossPattern ?? 'SPACE cross-dimension signal'} (${metric.trigger ?? 'matched rule'}). ` +
+    `${metric.whatItMeans ?? ''} Likely root cause: ${metric.likelyRootCause ?? 'n/a'}.`
+  ).trim();
+}
+
+async function normalizeCrossDimensionMetricThemes(campaignId: string): Promise<void> {
+  const rules = allCrossPatternThemeRules();
+  const themes = await prisma.openTextTheme.findMany({
+    where: { campaignId, sourceType: 'Cross-Dimension Metric' },
+    include: { tags: { select: { answerId: true } } },
+  });
+  for (const theme of themes) {
+    const rule = rules.find(
+      (r) =>
+        theme.themeName.startsWith(`${r.patternId} ·`) ||
+        theme.themeName === r.crossPattern ||
+        theme.themeName.includes(r.crossPattern),
+    );
+    if (!rule) continue;
+    const blockerName = blockerNameFromCrossMetric(rule);
+    if (theme.themeName === blockerName) continue;
+
+    const duplicate = await prisma.openTextTheme.findFirst({
+      where: {
+        campaignId,
+        id: { not: theme.id },
+        themeName: blockerName,
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      for (const tag of theme.tags) {
+        await prisma.openTextThemeTag.upsert({
+          where: { themeId_answerId: { themeId: duplicate.id, answerId: tag.answerId } },
+          create: { themeId: duplicate.id, answerId: tag.answerId },
+          update: {},
+        });
+      }
+      await prisma.openTextTheme.delete({ where: { id: theme.id } });
+      await recomputeStatsAndStatus(duplicate.id);
+      continue;
+    }
+
+    await prisma.openTextTheme.update({
+      where: { id: theme.id },
+      data: {
+        themeName: blockerName,
+        description: crossMetricDescription(rule),
+        jtbdStatement: theme.jtbdStatement ?? rule.leadershipAction ?? null,
+      },
+    });
+  }
+}
+
+async function tryNormalizeCrossDimensionMetricThemes(campaignId: string): Promise<void> {
+  try {
+    await tryNormalizeCrossDimensionMetricThemes(campaignId);
+  } catch (err) {
+    console.warn(`[themes] cross-dimension normalization skipped for ${campaignId}:`, err);
+  }
 }
 
 /** Recompute respondentCount/percentage for a theme using its current tags. */
@@ -328,8 +460,9 @@ themesRouter.get('/', async (req, res, next) => {
     if (!includeEmpty && totalRespondents === 0) {
       return res.json({ items: [] });
     }
+    await normalizeCrossDimensionMetricThemes(campaignId);
     const items = await prisma.openTextTheme.findMany({
-      where: { campaignId, NOT: { sourceType: 'Cross-Dimension Metric' } },
+      where: { campaignId },
       orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }, { createdAt: 'desc' }],
       include: {
         _count: { select: { tags: true } },
@@ -709,7 +842,14 @@ themesRouter.delete(
       }
       await prisma.openTextTheme.delete({ where: { id: themeId } });
       res.status(204).end();
-    } catch (e) { next(e); }
+    } catch (e) {
+      console.error('[themes.autoGenerate] failed', {
+        companyId: req.params.companyId,
+        campaignId: req.params.campaignId,
+        error: e,
+      });
+      next(e);
+    }
   },
 );
 
@@ -993,6 +1133,8 @@ themesRouter.post(
 
       if (replace) {
         await prisma.openTextTheme.deleteMany({ where: { campaignId } });
+      } else {
+        await tryNormalizeCrossDimensionMetricThemes(campaignId);
       }
 
       const questions = await prisma.question.findMany({
@@ -1101,6 +1243,36 @@ themesRouter.post(
         }
       }
 
+      // ── Cross-dimension metric blockers ──────────────────────────────
+      // Phase 1 triage flags cross-dimension patterns (e.g. low Satisfaction +
+      // low Performance). Surface each fired metric as a Phase 2 blocker, naming
+      // it from the metric's plain-English diagnosis rather than the raw metric
+      // label, and back it with the low Likert evidence from its dimensions.
+      const dimensionScores = await computeDimensionScores(campaignId, campaign.questionnaireId);
+      const matchedMetrics = matchedCrossPatternThemeRules(dimensionScores).filter(
+        (metric) => metric.severity !== 'INFO',
+      );
+      let crossPatternThemeCount = 0;
+      for (const metric of matchedMetrics) {
+        const themeName = blockerNameFromCrossMetric(metric);
+        const themeId = await rememberTheme({
+          themeName,
+          sourceType: 'Cross-Dimension Metric',
+          description: crossMetricDescription(metric),
+          jtbdStatement: metric.leadershipAction ?? null,
+        });
+        crossPatternThemeCount += 1;
+        for (const answer of allAnswers) {
+          const code = answer.question.dimension.code as DimensionCode;
+          if (!metric.dimensions.includes(code)) continue;
+          const isLowLikert =
+            answer.question.questionType === 'LIKERT' &&
+            answer.scoredValue !== null &&
+            answer.scoredValue <= 3;
+          if (isLowLikert && (await tagAnswer(themeId, answer.id))) totalTagged += 1;
+        }
+      }
+
       for (const themeId of generatedThemeIds) {
         await recomputeStatsAndStatus(themeId);
       }
@@ -1126,7 +1298,7 @@ themesRouter.post(
         updated,
         totalTagged,
         questionnaireThemes: firstQuestionBySignal.size,
-        crossPatternThemes: 0,
+        crossPatternThemes: crossPatternThemeCount,
         clusters: clusters.length,
         totalRespondents,
       });
@@ -1140,7 +1312,7 @@ themesRouter.post(
         totalTagged,
         totalRespondents,
         questionnaireThemeCount: firstQuestionBySignal.size,
-        crossPatternThemeCount: 0,
+        crossPatternThemeCount,
         clusterThemeCount: clusters.length,
         generatedCandidateCount: summaryThemes.length,
         themes: visibleThemes,
@@ -1153,7 +1325,7 @@ themesRouter.post(
         openTextClusterInputCount: answersForClusters.length,
         clustersFound: clusters.length,
         questionnaireThemeCount: firstQuestionBySignal.size,
-        crossPatternThemeCount: 0,
+        crossPatternThemeCount,
         generatedCandidateCount: summaryThemes.length,
         visibleThemeCount: visibleThemes.length,
         created,
@@ -1169,7 +1341,7 @@ themesRouter.post(
         themes: visibleThemes,
         incremental,
         questionnaireThemeCount: firstQuestionBySignal.size,
-        crossPatternThemeCount: 0,
+        crossPatternThemeCount,
         clusterThemeCount: clusters.length,
       });
     } catch (e) { next(e); }

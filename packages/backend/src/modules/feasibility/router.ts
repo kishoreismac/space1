@@ -44,18 +44,19 @@ async function loadBlocker(campaignId: string, blockerId: string) {
 function phase2BlockerWhere(campaignId: string) {
   return {
     campaignId,
-    NOT: {
-      OR: [
-        { evidenceSummary: { startsWith: 'Cross-dimension metric evidence:' } },
-        {
-          AND: [
-            { title: { startsWith: 'Low ' } },
-            { evidenceSummary: { contains: 'survey mean' } },
-          ],
-        },
-      ],
-    },
+    sourcePhase: { startsWith: 'PHASE 2' },
   };
+}
+
+async function currentPhase2ThemeNames(campaignId: string): Promise<Set<string>> {
+  const themes = await prisma.openTextTheme.findMany({
+    where: {
+      campaignId,
+      OR: [{ respondentCount: { gt: 0 } }, { tags: { some: {} } }],
+    },
+    select: { themeName: true },
+  });
+  return new Set(themes.map((theme) => theme.themeName.toLowerCase()));
 }
 
 // ─── Per-blocker feasibility upsert ────────────────────────────────────
@@ -158,10 +159,11 @@ feasibilityRouter.get('/roadmap', async (req, res, next) => {
       where: phase2BlockerWhere(campaignId),
       include: { feasibility: true },
     });
+    const phase2ThemeNames = await currentPhase2ThemeNames(campaignId);
 
     const SEVERITY_IMPACT: Record<string, number> = { P1: 5, P2: 4, P3: 3, P4: 2 };
 
-    const rows = blockers.map((b) => {
+    const rows = blockers.filter((b) => phase2ThemeNames.has(b.title.toLowerCase())).map((b) => {
       const sevImpact = SEVERITY_IMPACT[b.severity] ?? 3;
       // reach 0-100 → 0-5
       const reachImpact = b.reachPercentage ? (b.reachPercentage / 100) * 5 : 0;
@@ -237,7 +239,7 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
 
-    const [blockers, totalRespondents, dimRows] = await Promise.all([
+    const [blockersRaw, totalRespondents, dimRows, phase2ThemeNames] = await Promise.all([
       prisma.blocker.findMany({
         where: phase2BlockerWhere(campaignId),
         include: {
@@ -264,7 +266,9 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
           GROUP BY d.id`,
         campaignId,
       ),
+      currentPhase2ThemeNames(campaignId),
     ]);
+    const blockers = blockersRaw.filter((b) => phase2ThemeNames.has(b.title.toLowerCase()));
     const dimAvg = new Map<string, number>();
     const dimCodeByName = new Map<string, string>();
     for (const d of dimRows) {
