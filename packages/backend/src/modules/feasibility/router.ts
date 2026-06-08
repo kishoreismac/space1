@@ -22,6 +22,19 @@ async function loadCampaign(companyId: string, campaignId: string) {
   return c;
 }
 
+function inferSdlcPhase(...values: Array<string | null | undefined>): string {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  if (/requirement|acceptance|scope|planning|priority|backlog|business context|spec/.test(text)) return 'Planning';
+  if (/code review|review|pull request|\bpr\b|merge/.test(text)) return 'Review';
+  if (/ci|cd|pipeline|build|compile/.test(text)) return 'Build';
+  if (/test|flaky|qa|regression|failure rate/.test(text)) return 'Test';
+  if (/deploy|release|change failure|lead time/.test(text)) return 'Deploy';
+  if (/incident|mttr|restore|production|operations|support|outage|rca/.test(text)) return 'Operations';
+  if (/code|coding|development|developer|local env|environment|ide|onboard/.test(text)) return 'Coding';
+  if (/meeting|interrupt|context switch|focus|handoff|collaboration|communication/.test(text)) return 'Collaboration';
+  return 'Cross-SDLC';
+}
+
 async function loadBlocker(campaignId: string, blockerId: string) {
   const b = await prisma.blocker.findUnique({ where: { id: blockerId } });
   if (!b || b.campaignId !== campaignId) throw new HttpError(404, 'Blocker not found');
@@ -212,12 +225,20 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
         where: { campaignId },
         include: {
           feasibility: true,
-          signals: { select: { signalType: true, confirmed: true } },
+          signals: {
+            select: {
+              signalType: true,
+              signalName: true,
+              evidenceValue: true,
+              evidenceDescription: true,
+              confirmed: true,
+            },
+          },
         },
       }),
       prisma.submission.count({ where: { campaignId, status: 'COMPLETED' } }),
-      prisma.$queryRawUnsafe<{ code: string; avg: number }[]>(
-        `SELECT d.code as code, AVG(CAST(a.numericValue AS REAL)) as avg
+      prisma.$queryRawUnsafe<{ code: string; name: string; avg: number }[]>(
+        `SELECT d.code as code, d.name as name, AVG(CAST(a.numericValue AS REAL)) as avg
            FROM Answer a
            JOIN Submission s ON s.id = a.submissionId
            JOIN Question q ON q.id = a.questionId
@@ -228,7 +249,11 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
       ),
     ]);
     const dimAvg = new Map<string, number>();
-    for (const d of dimRows) dimAvg.set(d.code, Number(d.avg));
+    const dimCodeByName = new Map<string, string>();
+    for (const d of dimRows) {
+      dimAvg.set(d.code, Number(d.avg));
+      dimCodeByName.set(d.name.toLowerCase(), d.code);
+    }
 
     type Severity = 'P1' | 'P2' | 'P3' | 'P4';
     type Klass = 'STRONG_FIT' | 'CANDIDATE' | 'INVESTIGATE' | 'NOT_FIT';
@@ -244,7 +269,8 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
       const reach = b.reachPercentage ?? 0;
       const dim = b.dimensionCode ? dimAvg.get(b.dimensionCode) ?? 3 : 3;
       // Tool Maturity: stronger when dimension score is poor AND blocker is on a tooling axis.
-      const isToolingPhase = ['Build', 'Coding', 'Test', 'Operations'].some((p) => (b.sdlcPhase ?? '').includes(p));
+      const phase = b.sdlcPhase ?? inferSdlcPhase(b.title, b.description, b.evidenceSummary);
+      const isToolingPhase = ['Build', 'Coding', 'Test', 'Operations'].some((p) => phase.includes(p));
       const toolMaturity = Math.min(5, Math.max(2,
         (dim < 2.5 ? 5 : dim < 3.0 ? 4 : 3) + (isToolingPhase ? 1 : 0) - 1
       ));
@@ -276,19 +302,134 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
       return { toolMaturity, integrationEase, costEfficiency, dataAvailability, developerAdoption, composite5, classification, auto: true };
     }
 
-    // Recommended tool stub based on title / dimension.
-    function recommendTool(title: string, dim: string | null): string {
-      const t = title.toLowerCase();
-      if (t.includes('codebase') || t.includes('onboard')) return 'GitHub Copilot + RAG';
-      if (t.includes('ci') || t.includes('pipeline') || t.includes('build') || t.includes('flak')) return 'BuildPulse + Harness AI';
-      if (t.includes('requirement') || t.includes('spec') || t.includes('clarity')) return 'Custom AC Agent · Jira';
-      if (t.includes('incident') || t.includes('rca') || t.includes('outage')) return 'PagerDuty AI + Splunk';
-      if (t.includes('review') || t.includes('pr')) return 'GitHub Copilot Reviews';
-      if (t.includes('env') || t.includes('local')) return 'Devbox / Coder';
-      if (t.includes('doc')) return 'Glean + Notion AI';
-      if (t.includes('context') || t.includes('focus') || t.includes('meeting')) return 'Clockwise + Reclaim';
-      if (dim === 'S' || dim === 'P') return '— Non-AI workstream';
-      return 'TBD · scoping';
+    function recommendTool(title: string, dim: string | null, phase: string): string {
+      const t = `${title} ${phase}`.toLowerCase();
+      if (t.includes('codebase') || t.includes('onboard') || t.includes('coding')) return 'GitHub Copilot Chat + repo RAG';
+      if (t.includes('ci') || t.includes('pipeline') || t.includes('build')) return 'CI observability + failure clustering';
+      if (t.includes('flaky') || t.includes('test') || t.includes('qa')) return 'Flaky test detection + test impact analysis';
+      if (t.includes('requirement') || t.includes('spec') || t.includes('clarity') || t.includes('planning')) return 'Jira/ADO requirements quality agent';
+      if (t.includes('incident') || t.includes('rca') || t.includes('outage') || t.includes('operations')) return 'Incident summarization + RCA assistant';
+      if (t.includes('review') || t.includes('pr') || t.includes('merge')) return 'AI PR review + review routing';
+      if (t.includes('env') || t.includes('local')) return 'Dev environment automation';
+      if (t.includes('doc')) return 'Engineering knowledge search assistant';
+      if (t.includes('context') || t.includes('focus') || t.includes('meeting') || t.includes('collaboration')) return 'Work management analytics';
+      if (dim === 'S' || dim === 'P') return 'Process / management intervention';
+      return 'Discovery spike to select tool';
+    }
+
+    function recommendAction(args: {
+      blocker: typeof blockers[number];
+      band: 'Quick Win' | 'Strategic Bet' | 'Monitor' | 'Defer' | 'Non-AI';
+      tool: string;
+      score: number;
+      sourcesLabel: string;
+    }): string {
+      const { blocker, band, tool, score, sourcesLabel } = args;
+      if (blocker.feasibility?.notes?.trim()) return blocker.feasibility.notes.trim();
+      const context = [
+        blocker.title,
+        blocker.description,
+        blocker.evidenceSummary,
+        blocker.sdlcPhase,
+        blocker.dimensionCode,
+        ...blocker.signals.map((signal) =>
+          [signal.signalName, signal.evidenceValue, signal.evidenceDescription].filter(Boolean).join(' '),
+        ),
+      ].join(' ').toLowerCase();
+
+      if (/flaky|test|qa|regression|failure rate/.test(context)) {
+        return `Use ${tool} to cluster flaky failures by test, owner, and failure signature; quarantine unstable tests and prioritize the top recurring failures before expanding automation.`;
+      }
+      if (/ci|cd|pipeline|build|compile/.test(context)) {
+        return `Use ${tool} to identify the slowest and most failure-prone pipeline stages; target one bottleneck first, then track build time and rerun rate after the fix.`;
+      }
+      if (/review|pull request|\bpr\b|merge/.test(context)) {
+        return `Use ${tool} to pre-check PRs, summarize risky diffs, and route reviews to the right owners; measure first-review lag and review iterations after rollout.`;
+      }
+      if (/requirement|acceptance|scope|planning|priority|backlog|business context|spec|clarity|rework/.test(context)) {
+        return `Use ${tool} to review stories for missing acceptance criteria, ambiguity, and downstream dependencies before sprint commitment; track rework and clarification loops.`;
+      }
+      if (/incident|mttr|restore|production|operations|support|outage|rca/.test(context)) {
+        return `Use ${tool} to summarize incident timelines, extract probable causes, and draft RCA actions from logs and tickets; measure MTTR and repeat-incident reduction.`;
+      }
+      if (/codebase|onboard|knowledge|documentation|doc|repo/.test(context)) {
+        return `Use ${tool} to answer repo and architecture questions from code plus docs; pilot it with new joiners or rotating engineers and track onboarding/query resolution time.`;
+      }
+      if (/environment|local env|dev env|setup|dependency|configuration/.test(context)) {
+        return `Use ${tool} to standardize setup checks, detect dependency/config drift, and generate guided fixes; measure time-to-first-successful-build.`;
+      }
+      if (/context switch|interrupt|focus|meeting|handoff|collaboration|communication|wait state/.test(context)) {
+        return `Use ${tool} to quantify interruption patterns and handoff delays, then recommend focus blocks, ownership changes, or meeting reductions for the affected teams.`;
+      }
+      if (/security|compliance|approval|gate|governance/.test(context)) {
+        return `Use ${tool} to automate policy checks and approval evidence collection; reduce manual gate time while preserving required controls.`;
+      }
+
+      if (band === 'Quick Win') {
+        return `Pilot ${tool} against "${blocker.title}" first; evidence is strong (${sourcesLabel}) and feasibility score is ${score.toFixed(1)}.`;
+      }
+      if (band === 'Strategic Bet') {
+        return `Run a scoped proof of concept for "${blocker.title}" using ${tool}; validate integration effort, data access, and team adoption before wider rollout.`;
+      }
+      if (band === 'Monitor') {
+        return `Keep "${blocker.title}" in the backlog, collect stronger operational evidence, and revisit ${tool} after source confirmation improves.`;
+      }
+      if (band === 'Non-AI') {
+        return `Route "${blocker.title}" to process, ownership, or management intervention before considering tooling.`;
+      }
+      return `Do not invest yet in "${blocker.title}"; clarify source evidence and expected impact before selecting ${tool}.`;
+    }
+
+    function themeSourceLabel(signalName: string): string {
+      if (signalName.includes('(Numeric Question)')) return 'Numeric question';
+      if (signalName.includes('(Text Question)')) return 'Open text';
+      if (signalName.includes('(Cross-Dimension Metric)')) return 'Cross-dimension metric';
+      return 'Phase 2 theme';
+    }
+
+    function signalSourceLabel(signal: typeof blockers[number]['signals'][number]): string {
+      if (signal.signalType === 'SURVEY') return 'Survey';
+      if (signal.signalType === 'THEME') return themeSourceLabel(signal.signalName);
+      if (signal.signalType === 'DORA') return signal.signalName.includes('CURRENT') ? 'DORA data' : signal.signalName;
+      if (signal.signalType === 'JOURNEY_MAP') return 'Journey map';
+      return signal.signalType;
+    }
+
+    function dimensionCodesFromText(value: string | null | undefined): string[] {
+      const found = new Set<string>();
+      const text = value ?? '';
+      for (const code of ['S', 'P', 'A', 'C', 'E']) {
+        if (new RegExp(`\\b${code}\\b`).test(text)) found.add(code);
+      }
+      return [...found];
+    }
+
+    function dimensionCodesFromBlocker(b: typeof blockers[number]): string[] {
+      const codes = new Set<string>();
+      for (const code of dimensionCodesFromText(b.dimensionCode)) codes.add(code);
+      for (const signal of b.signals) {
+        if (signal.signalType === 'SURVEY') {
+          for (const [name, code] of dimCodeByName.entries()) {
+            if (signal.signalName.toLowerCase().includes(name)) codes.add(code);
+          }
+        }
+        if (signal.signalType === 'THEME') {
+          for (const code of dimensionCodesFromText(signal.evidenceDescription)) codes.add(code);
+        }
+      }
+      return [...codes];
+    }
+
+    function dimensionScoreForCodes(codes: string[]): { label: string; value: number | null } {
+      const scored = codes
+        .map((code) => ({ code, avg: dimAvg.get(code) ?? null }))
+        .filter((item): item is { code: string; avg: number } => item.avg !== null);
+      if (scored.length === 0) return { label: '—', value: null };
+      const weakest = scored.sort((a, b) => a.avg - b.avg)[0];
+      return {
+        label: `${weakest.code}:${Math.round(weakest.avg * 10) / 10}`,
+        value: Math.round(weakest.avg * 100) / 100,
+      };
     }
 
     const registry: any[] = [];
@@ -301,17 +442,19 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
 
     blockers.forEach((b, idx) => {
       // Sources
-      const sourceTypes = [...new Set(b.signals.map((s) => s.signalType))];
+      const sourceTypes = [...new Set(b.signals.map(signalSourceLabel))];
       const sourceConfirmed = b.signals.filter((s) => s.confirmed).length;
       const sourcesLabel = sourceTypes.length === 0
         ? '—'
-        : `${sourceTypes.slice(0, 3).join('+')} (${sourceConfirmed}/${b.signals.length || 0})`;
-      const dimAvgForB = b.dimensionCode ? dimAvg.get(b.dimensionCode) ?? null : null;
+        : sourceTypes.join(' + ');
+      const dimensionCodes = dimensionCodesFromBlocker(b);
+      const dimensionScore = dimensionScoreForCodes(dimensionCodes);
 
       // Feasibility — use manual score if present, else auto-derive from survey signals.
       const auto = autoScore(b);
       const hasManual = !!b.feasibility;
-      const tool = b.feasibility?.notes ?? recommendTool(b.title, b.dimensionCode);
+      const registrySdlcPhase = b.sdlcPhase ?? inferSdlcPhase(b.title, b.description, b.evidenceSummary);
+      const tool = recommendTool(b.title, b.dimensionCode, registrySdlcPhase);
       const composite5 = hasManual ? b.feasibility!.weightedCompositeScore : auto.composite5;
       const classification = (hasManual ? (b.feasibility!.classification as Klass) : auto.classification);
 
@@ -338,9 +481,10 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
         n: idx + 1,
         id: b.id,
         title: b.title,
-        sdlcPhase: b.sdlcPhase ?? '—',
-        dimensionCode: b.dimensionCode ?? '—',
-        dimensionScore: dimAvgForB !== null ? Math.round(dimAvgForB * 100) / 100 : null,
+        sdlcPhase: registrySdlcPhase,
+        dimensionCode: dimensionCodes.length > 0 ? dimensionCodes.join(' + ') : '—',
+        dimensionScore: dimensionScore.value,
+        scoreLabel: dimensionScore.label,
         sourcesLabel,
         sourcesConfirmed: sourceConfirmed,
         sourcesTotal: b.signals.length,
@@ -364,6 +508,13 @@ feasibilityRouter.get('/program-output', async (req, res, next) => {
           score: composite10,
           classification: band,
           tool,
+          recommendedAction: recommendAction({
+            blocker: b,
+            band,
+            tool,
+            score: composite10,
+            sourcesLabel,
+          }),
           auto: !hasManual,
         });
       }

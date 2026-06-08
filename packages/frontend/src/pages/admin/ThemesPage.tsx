@@ -826,6 +826,7 @@ function RootCausePanel({ base, themeId }: { base: string; themeId: string }) {
   const [selectedRootCauses, setSelectedRootCauses] = useState<string[]>([]);
   const [customRootCause, setCustomRootCause] = useState('');
   const [submittedRootCauses, setSubmittedRootCauses] = useState<string[]>([]);
+  const [isRootCauseDropdownOpen, setIsRootCauseDropdownOpen] = useState(true);
   const detail = useQuery({
     queryKey: ['theme-detail', themeId],
     queryFn: () => api<RootCauseDetail>(`${base}/${themeId}/detail`),
@@ -835,6 +836,7 @@ function RootCausePanel({ base, themeId }: { base: string; themeId: string }) {
     setSelectedRootCauses([]);
     setCustomRootCause('');
     setSubmittedRootCauses([]);
+    setIsRootCauseDropdownOpen(true);
   }, [themeId]);
 
   const causes = detail.data?.possibleRootCauses ?? [];
@@ -847,10 +849,13 @@ function RootCausePanel({ base, themeId }: { base: string; themeId: string }) {
   };
   const submitRootCauses = () => {
     const custom = customRootCause.trim();
-    const submitted = custom
+    const nextSelection = custom
       ? [...selectedRootCauses, custom]
       : selectedRootCauses;
-    setSubmittedRootCauses([...new Set(submitted)]);
+    setSubmittedRootCauses((current) => [...new Set([...current, ...nextSelection])]);
+    setSelectedRootCauses([]);
+    setCustomRootCause('');
+    setIsRootCauseDropdownOpen(false);
   };
   const canSubmit = selectedRootCauses.length > 0 || customRootCause.trim().length > 0;
 
@@ -871,52 +876,75 @@ function RootCausePanel({ base, themeId }: { base: string; themeId: string }) {
         <div className="text-sm text-slate-500">Loading root causes...</div>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {causes.map((cause, idx) => (
-              <label
-                key={cause}
-                className={`flex items-start gap-2 rounded border px-3 py-2 text-sm cursor-pointer ${
-                  selectedRootCauses.includes(cause)
-                    ? 'border-amber-400 bg-amber-50 text-amber-950'
-                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  name={`root-cause-${themeId}`}
-                  checked={selectedRootCauses.includes(cause)}
-                  onChange={() => toggleRootCause(cause)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="text-[11px] font-semibold uppercase text-slate-400 mr-1">
-                    {idx + 1}.
-                  </span>
-                  {cause}
-                </span>
-              </label>
-            ))}
-          </div>
-          <label className="block">
-            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
-              Root cause not listed?
-            </span>
-            <textarea
-              rows={3}
-              value={customRootCause}
-              onChange={(e) => setCustomRootCause(e.target.value)}
-              placeholder="Type the root cause you believe is driving this blocker..."
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-            />
-          </label>
           <button
             type="button"
-            disabled={!canSubmit}
-            onClick={submitRootCauses}
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            onClick={() => setIsRootCauseDropdownOpen((open) => !open)}
+            className="flex w-full items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
-            Submit Root Causes
+            <span>
+              Root Cause Choices
+              {selectedRootCauses.length > 0 && (
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  {selectedRootCauses.length} selected
+                </span>
+              )}
+            </span>
+            <span className={`text-slate-400 transition-transform ${isRootCauseDropdownOpen ? 'rotate-180' : ''}`}>
+              v
+            </span>
           </button>
+
+          {isRootCauseDropdownOpen && (
+            <div className="space-y-4 rounded border border-slate-200 bg-white p-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {causes.map((cause, idx) => (
+                  <label
+                    key={cause}
+                    className={`flex items-start gap-2 rounded border px-3 py-2 text-sm cursor-pointer ${
+                      selectedRootCauses.includes(cause)
+                        ? 'border-amber-400 bg-amber-50 text-amber-950'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      name={`root-cause-${themeId}`}
+                      checked={selectedRootCauses.includes(cause)}
+                      onChange={() => toggleRootCause(cause)}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="text-[11px] font-semibold uppercase text-slate-400 mr-1">
+                        {idx + 1}.
+                      </span>
+                      {cause}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <label className="block">
+                <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                  Root Cause Not Listed?
+                </span>
+                <textarea
+                  rows={3}
+                  value={customRootCause}
+                  onChange={(e) => setCustomRootCause(e.target.value)}
+                  placeholder="Type the root cause you believe is driving this blocker..."
+                  className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!canSubmit}
+                onClick={submitRootCauses}
+                className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Submit Root Causes
+              </button>
+            </div>
+          )}
+
           <div className="rounded border border-slate-200 bg-slate-50 p-3">
             <h5 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
               Selected Root Causes

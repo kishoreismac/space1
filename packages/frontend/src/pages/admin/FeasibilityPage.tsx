@@ -18,6 +18,7 @@ interface RegistryRow {
   sdlcPhase: string;
   dimensionCode: string;
   dimensionScore: number | null;
+  scoreLabel: string;
   sourcesLabel: string;
   sourcesConfirmed: number;
   sourcesTotal: number;
@@ -39,6 +40,7 @@ interface MatrixRow {
   score: number;
   classification: Band;
   tool: string;
+  recommendedAction: string;
   auto: boolean;
 }
 
@@ -201,8 +203,8 @@ function RegistrySection({ registry, totalRespondents }: { registry: RegistryRow
                   </Td>
                   <Td className="text-slate-600">{r.sdlcPhase}</Td>
                   <Td><DimensionBadge code={r.dimensionCode} /></Td>
-                  <Td>{r.dimensionScore !== null ? <ScoreBadge value={r.dimensionScore} /> : <span className="text-slate-400">—</span>}</Td>
-                  <Td className="text-slate-700 text-[12px]">{r.sourcesLabel}</Td>
+                  <Td>{r.dimensionScore !== null ? <ScoreBadge value={r.dimensionScore} label={r.scoreLabel} /> : <span className="text-slate-400">—</span>}</Td>
+                  <Td className="whitespace-pre-line text-slate-700 text-[12px]">{r.sourcesLabel}</Td>
                   <Td className="tabular-nums text-slate-700">
                     {r.reachPercentage !== null
                       ? <>{Math.round(r.reachPercentage)}% <span className="text-slate-400">({respondents}/{totalRespondents})</span></>
@@ -243,15 +245,15 @@ function MatrixSection({ matrix }: { matrix: MatrixRow[] }) {
               <Th>Blocker</Th>
               <Th><div>Tool Maturity</div><div className="text-[10px] font-normal opacity-70">25%</div></Th>
               <Th><div>Integration</div><div className="text-[10px] font-normal opacity-70">20%</div></Th>
-              <Th><div>Cost Eff.</div><div className="text-[10px] font-normal opacity-70">25%</div></Th>
-              <Th><div>Data Avail.</div><div className="text-[10px] font-normal opacity-70">15%</div></Th>
+              <Th><div>Cost Eff.</div><div className="text-[10px] font-normal opacity-70">20%</div></Th>
+              <Th><div>Data Avail.</div><div className="text-[10px] font-normal opacity-70">20%</div></Th>
               <Th><div>Dev Adoption</div><div className="text-[10px] font-normal opacity-70">15%</div></Th>
-              <Th>Score</Th><Th>Class</Th><Th>Recommended Tool</Th>
+              <Th>Score</Th><Th>Class</Th><Th>Recommended Tool</Th><Th>Recommended Action</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {matrix.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400 italic">No AI-fit blockers in registry</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400 italic">No AI-fit blockers in registry</td></tr>
             )}
             {matrix.map((m) => (
               <tr key={m.id} className="hover:bg-slate-50">
@@ -267,6 +269,7 @@ function MatrixSection({ matrix }: { matrix: MatrixRow[] }) {
                 <Td><span className="font-semibold text-base tabular-nums text-slate-900">{m.score.toFixed(1)}</span></Td>
                 <Td><BandBadge band={m.classification} /></Td>
                 <Td className="text-slate-700 text-[12px]">{m.tool}</Td>
+                <Td className="max-w-[320px] text-slate-700 text-[12px]">{m.recommendedAction}</Td>
               </tr>
             ))}
           </tbody>
@@ -316,11 +319,11 @@ function DimensionBadge({ code }: { code: string }) {
   const cls = colours[code] ?? 'bg-slate-100 text-slate-700 border-slate-200';
   return <span className={`inline-block px-1.5 py-0.5 rounded border text-[11px] font-semibold ${cls}`}>{code}</span>;
 }
-function ScoreBadge({ value }: { value: number }) {
+function ScoreBadge({ value, label }: { value: number; label?: string }) {
   let tone = 'bg-emerald-100 text-emerald-700 border-emerald-200';
   if (value < 2.5) tone = 'bg-rose-100 text-rose-700 border-rose-200';
   else if (value < 3.0) tone = 'bg-amber-100 text-amber-800 border-amber-200';
-  return <span className={`inline-block px-1.5 py-0.5 rounded border text-[11px] font-semibold tabular-nums ${tone}`}>{value.toFixed(2)}</span>;
+  return <span className={`inline-block px-1.5 py-0.5 rounded border text-[11px] font-semibold tabular-nums ${tone}`}>{label ?? value.toFixed(2)}</span>;
 }
 function PriorityFlag({ p }: { p: Severity }) {
   const tones: Record<Severity, string> = {

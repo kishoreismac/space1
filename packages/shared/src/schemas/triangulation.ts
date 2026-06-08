@@ -9,6 +9,9 @@ export const SourcePhaseEnum = z.enum([
   'JOURNEY',
   'TRIANGULATION',
   'MANUAL',
+  'PHASE 2 - Numeric Question',
+  'PHASE 2 - Text Question',
+  'PHASE 2 - Cross-Dimension Metric',
 ]);
 
 export const BlockerCreateSchema = z.object({

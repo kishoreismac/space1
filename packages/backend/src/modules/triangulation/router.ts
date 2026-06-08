@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ZodError, z } from 'zod';
 import {
+  allCrossPatternThemeRules,
   BlockerCreateSchema,
   BlockerUpdateSchema,
   SignalCreateSchema,
@@ -53,6 +54,64 @@ function parseDoraMetrics(raw: string | null): DoraMetrics {
 
 function handleZod(err: ZodError): HttpError {
   return new HttpError(400, 'Invalid request body', err.issues);
+}
+
+type Phase2ThemeSource = 'Numeric Question' | 'Text Question' | 'Cross-Dimension Metric';
+
+function normalizeThemeSource(sourceType: string | null | undefined): Phase2ThemeSource {
+  if (sourceType === 'Numeric Question') return 'Numeric Question';
+  if (sourceType === 'Cross-Dimension Metric') return 'Cross-Dimension Metric';
+  return 'Text Question';
+}
+
+function blockerSourcePhaseFromTheme(sourceType: string | null | undefined): string {
+  return `PHASE 2 - ${normalizeThemeSource(sourceType)}`;
+}
+
+function evidenceLabelFromThemeSource(sourceType: string | null | undefined): string {
+  const source = normalizeThemeSource(sourceType);
+  if (source === 'Numeric Question') return 'Numeric question evidence';
+  if (source === 'Cross-Dimension Metric') return 'Cross-dimension metric evidence';
+  return 'Open-text question evidence';
+}
+
+function themeEvidenceSummary(t: {
+  sourceType: string | null;
+  respondentCount: number;
+  percentage: number;
+  status: string;
+  jtbdStatement: string | null;
+  description: string | null;
+}): string {
+  const label = evidenceLabelFromThemeSource(t.sourceType);
+  const details = [t.jtbdStatement, t.description].filter(Boolean).join(' ');
+  return [
+    `${label} from Phase 2`,
+    `${t.respondentCount} respondents (${t.percentage}% of campaign)`,
+    `status: ${t.status}`,
+    details ? `details: ${details}` : null,
+  ]
+    .filter(Boolean)
+    .join('. ');
+}
+
+function inferSdlcPhase(...values: Array<string | null | undefined>): string {
+  const text = values.filter(Boolean).join(' ').toLowerCase();
+  if (/requirement|acceptance|scope|planning|priority|backlog|business context|spec/.test(text)) return 'Planning';
+  if (/code review|review|pull request|\bpr\b|merge/.test(text)) return 'Review';
+  if (/ci|cd|pipeline|build|compile/.test(text)) return 'Build';
+  if (/test|flaky|qa|regression|failure rate/.test(text)) return 'Test';
+  if (/deploy|release|change failure|lead time/.test(text)) return 'Deploy';
+  if (/incident|mttr|restore|production|operations|support|outage|rca/.test(text)) return 'Operations';
+  if (/code|coding|development|developer|local env|environment|ide|onboard/.test(text)) return 'Coding';
+  if (/meeting|interrupt|context switch|focus|handoff|collaboration|communication/.test(text)) return 'Collaboration';
+  return 'Cross-SDLC';
+}
+
+function crossPatternDimensionCode(themeName: string): string | null {
+  const rule = allCrossPatternThemeRules().find((r) => themeName.startsWith(`${r.patternId} ·`));
+  if (!rule || rule.dimensions.length === 0) return null;
+  return rule.dimensions.join(' + ');
 }
 
 async function loadCampaign(companyId: string, campaignId: string) {
@@ -465,20 +524,21 @@ triangulationRouter.get('/candidates', async (req, res, next) => {
       campaignId,
     );
 
-    // Top themes (PROMOTE or INVESTIGATE) by respondent count
+    // Phase 2 blocker themes with actual respondent evidence
     const themes = await prisma.openTextTheme.findMany({
       where: {
         campaignId,
-        status: { in: ['PROMOTE', 'INVESTIGATE'] },
+        OR: [{ respondentCount: { gt: 0 } }, { tags: { some: {} } }],
       },
-      orderBy: [{ respondentCount: 'desc' }],
-      take: 5,
+      orderBy: [{ respondentCount: 'desc' }, { themeName: 'asc' }],
       select: {
         id: true,
         themeName: true,
         respondentCount: true,
         percentage: true,
         jtbdStatement: true,
+        description: true,
+        sourceType: true,
         status: true,
       },
     });
@@ -552,10 +612,24 @@ triangulationRouter.post(
         campaignId,
       );
       const themes = await prisma.openTextTheme.findMany({
-        where: { campaignId, status: { in: ['PROMOTE', 'INVESTIGATE'] } },
-        orderBy: [{ respondentCount: 'desc' }],
-        take: 10,
+        where: {
+          campaignId,
+          OR: [{ respondentCount: { gt: 0 } }, { tags: { some: {} } }],
+        },
+        orderBy: [{ respondentCount: 'desc' }, { themeName: 'asc' }],
       });
+      const sourceQuestionIds = [
+        ...new Set(themes.map((t) => t.sourceQuestionId).filter((id): id is string => Boolean(id))),
+      ];
+      const sourceQuestions = sourceQuestionIds.length > 0
+        ? await prisma.question.findMany({
+            where: { id: { in: sourceQuestionIds } },
+            include: { dimension: { select: { code: true } } },
+          })
+        : [];
+      const sourceQuestionDimensionById = new Map(
+        sourceQuestions.map((q) => [q.id, q.dimension.code]),
+      );
       const redSteps = await prisma.journeyMapStep.findMany({
         where: { session: { campaignId }, frictionLevel: 'RED' },
         orderBy: { dotVotes: 'desc' },
@@ -566,30 +640,78 @@ triangulationRouter.post(
       });
 
       const existing = await prisma.blocker.findMany({ where: { campaignId } });
-      const existingTitles = new Set(existing.map((b) => b.title.toLowerCase()));
+      const existingByTitle = new Map(existing.map((b) => [b.title.toLowerCase(), b]));
+      const existingTitles = new Set(existingByTitle.keys());
 
       let created = 0;
       const summary: Array<{ id: string; title: string; severity: string; sources: number }> = [];
 
       const sevFromScore = (avg: number) => (avg < 2.0 ? 'P1' : avg < 2.5 ? 'P2' : avg < 3.0 ? 'P3' : 'P4');
+      const sevFromTheme = (percentage: number) =>
+        percentage >= 40 ? 'P1' : percentage >= 25 ? 'P2' : percentage >= 10 ? 'P3' : 'P4';
+      const dimensionCodeFromTheme = (t: (typeof themes)[number]) =>
+        (t.sourceQuestionId ? sourceQuestionDimensionById.get(t.sourceQuestionId) ?? null : null) ??
+        (t.sourceType === 'Cross-Dimension Metric' ? crossPatternDimensionCode(t.themeName) : null);
+      const upsertThemeSignal = async (blockerId: string, t: (typeof themes)[number]) => {
+        const signalName = `${t.themeName} (${normalizeThemeSource(t.sourceType)})`;
+        const existingSignal = await prisma.validationSignal.findFirst({
+          where: {
+            campaignId,
+            blockerId,
+            signalType: 'THEME',
+            signalName,
+          },
+        });
+        const data = {
+          evidenceValue: `${t.respondentCount} respondents (${t.percentage}%)`,
+          evidenceDescription: themeEvidenceSummary(t),
+          confirmed: t.status === 'PROMOTE',
+        };
+        if (existingSignal) {
+          await prisma.validationSignal.update({
+            where: { id: existingSignal.id },
+            data,
+          });
+          return;
+        }
+        await prisma.validationSignal.create({
+          data: {
+            campaignId,
+            blockerId,
+            signalType: 'THEME',
+            signalName,
+            ...data,
+          },
+        });
+      };
 
       // 1) From low dimensions
       for (const d of dimAgg) {
         const title = `Low ${d.name} signal (avg ${Number(d.avg).toFixed(2)})`;
         if (existingTitles.has(title.toLowerCase())) continue;
         const matchedThemes = themes.filter((t) =>
-          t.themeName.toLowerCase().includes(d.name.toLowerCase()),
+          t.themeName.toLowerCase().includes(d.name.toLowerCase()) ||
+          (t.description ?? '').toLowerCase().includes(d.name.toLowerCase()) ||
+          (t.sourceType === 'Numeric Question' && t.description?.includes(` ${d.code} dimension`)),
         );
         const sources = 1 + (matchedThemes.length > 0 ? 1 : 0);
+        const phase2Evidence = matchedThemes.map((t) =>
+          `${t.themeName} [${normalizeThemeSource(t.sourceType)}: ${t.respondentCount} respondents, ${t.percentage}%]`,
+        );
         const b = await prisma.blocker.create({
           data: {
             campaignId,
             title,
             description: `Auto-seeded from Phase 1 survey scores. Dimension averaged ${Number(d.avg).toFixed(2)} across ${d.count} responses.`,
-            sourcePhase: 'TRIANGULATION',
+            sourcePhase: matchedThemes.length > 0 ? 'PHASE 2 - Numeric Question' : 'TRIANGULATION',
             dimensionCode: d.code,
+            sdlcPhase: inferSdlcPhase(title, d.name, phase2Evidence.join(' ')),
             severity: sevFromScore(Number(d.avg)),
-            evidenceSummary: `Survey mean ${Number(d.avg).toFixed(2)} / 5 (n=${d.count}). ${matchedThemes.length} corroborating theme(s).`,
+            evidenceSummary:
+              `Numeric question evidence: survey mean ${Number(d.avg).toFixed(2)} / 5 (n=${d.count}).` +
+              (phase2Evidence.length > 0
+                ? ` Phase 2 corroborating evidence: ${phase2Evidence.join('; ')}.`
+                : ' No Phase 2 theme corroboration yet.'),
             reachPercentage: totalRespondents > 0 ? 100 : null,
             aiFit: 'INVESTIGATE',
             status: 'OPEN',
@@ -612,9 +734,9 @@ triangulationRouter.post(
               campaignId,
               blockerId: b.id,
               signalType: 'THEME',
-              signalName: t.themeName,
+              signalName: `${t.themeName} (${normalizeThemeSource(t.sourceType)})`,
               evidenceValue: `${t.respondentCount} respondents (${t.percentage}%)`,
-              evidenceDescription: t.jtbdStatement,
+              evidenceDescription: themeEvidenceSummary(t),
               confirmed: t.status === 'PROMOTE',
             },
           });
@@ -627,33 +749,49 @@ triangulationRouter.post(
       // 2) From promoted themes not already covered
       for (const t of themes) {
         const title = t.themeName;
-        if (existingTitles.has(title.toLowerCase())) continue;
-        const sev = t.percentage >= 40 ? 'P1' : t.percentage >= 25 ? 'P2' : 'P3';
+        const existingThemeBlocker = existingByTitle.get(title.toLowerCase());
+        if (existingThemeBlocker) {
+          const missingUpdates: { sdlcPhase?: string; dimensionCode?: string | null } = {};
+          if (!existingThemeBlocker.sdlcPhase) {
+            missingUpdates.sdlcPhase = inferSdlcPhase(t.themeName, t.description, t.jtbdStatement);
+          }
+          if (!existingThemeBlocker.dimensionCode) {
+            missingUpdates.dimensionCode = dimensionCodeFromTheme(t);
+          }
+          if (Object.keys(missingUpdates).length > 0) {
+            await prisma.blocker.update({
+              where: { id: existingThemeBlocker.id },
+              data: missingUpdates,
+            });
+          }
+          await upsertThemeSignal(existingThemeBlocker.id, t);
+          summary.push({
+            id: existingThemeBlocker.id,
+            title,
+            severity: existingThemeBlocker.severity,
+            sources: existingThemeBlocker.sourcePhase?.startsWith('PHASE 2') ? 1 : 2,
+          });
+          continue;
+        }
+        const sev = sevFromTheme(t.percentage);
         const b = await prisma.blocker.create({
           data: {
             campaignId,
             title,
             description: t.description ?? `Auto-seeded from Phase 2 theme analysis (${t.percentage}% of campaign).`,
-            sourcePhase: 'TRIANGULATION',
+            sourcePhase: blockerSourcePhaseFromTheme(t.sourceType),
+            dimensionCode: dimensionCodeFromTheme(t),
+            sdlcPhase: inferSdlcPhase(t.themeName, t.description, t.jtbdStatement),
             severity: sev,
-            evidenceSummary: `Open-text theme — ${t.respondentCount} respondents (${t.percentage}% of campaign).`,
+            evidenceSummary: themeEvidenceSummary(t),
             reachPercentage: t.percentage,
             aiFit: 'CANDIDATE',
             status: 'OPEN',
           },
         });
-        await prisma.validationSignal.create({
-          data: {
-            campaignId,
-            blockerId: b.id,
-            signalType: 'THEME',
-            signalName: t.themeName,
-            evidenceValue: `${t.respondentCount} respondents (${t.percentage}%)`,
-            evidenceDescription: t.jtbdStatement,
-            confirmed: t.status === 'PROMOTE',
-          },
-        });
+        await upsertThemeSignal(b.id, t);
         existingTitles.add(title.toLowerCase());
+        existingByTitle.set(title.toLowerCase(), b);
         created += 1;
         summary.push({ id: b.id, title, severity: sev, sources: 1 });
       }
@@ -669,6 +807,7 @@ triangulationRouter.post(
             title,
             description: s.rootCause ?? `Auto-seeded from Phase 4 journey workshop (${s.dotVotes} dot-votes).`,
             sourcePhase: 'JOURNEY',
+            sdlcPhase: inferSdlcPhase(s.stepName, s.rootCause, s.jtbdStatement),
             severity: sev,
             evidenceSummary: `Workshop dot-votes: ${s.dotVotes}. Root cause: ${s.rootCause ?? '—'}.`,
             aiFit: 'CANDIDATE',

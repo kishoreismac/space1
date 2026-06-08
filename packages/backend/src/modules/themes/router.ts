@@ -51,6 +51,10 @@ function statusFromPercentage(percentage: number): 'PROMOTE' | 'INVESTIGATE' | '
   return 'MONITOR';
 }
 
+function sourceTypeForQuestion(questionType: string | null | undefined): 'Numeric Question' | 'Text Question' {
+  return questionType === 'OPEN_TEXT' ? 'Text Question' : 'Numeric Question';
+}
+
 /** Recompute respondentCount/percentage for a theme using its current tags. */
 async function recomputeStats(themeId: string): Promise<void> {
   const theme = await prisma.openTextTheme.findUnique({ where: { id: themeId } });
@@ -98,7 +102,7 @@ async function upsertGeneratedTheme(input: {
       data: {
         description: existing.description ?? input.description ?? null,
         sourceQuestionId: existing.sourceQuestionId ?? input.sourceQuestionId ?? null,
-        sourceType: existing.sourceType ?? input.sourceType ?? null,
+        sourceType: input.sourceType ?? existing.sourceType ?? null,
         representativeQuote: existing.representativeQuote ?? input.representativeQuote ?? null,
         jtbdStatement: existing.jtbdStatement ?? input.jtbdStatement ?? null,
       },
@@ -516,6 +520,7 @@ themesRouter.post(
         select: {
           id: true,
           blockerSignal: true,
+          questionType: true,
         },
       });
       const questionnaireThemes = Array.from(
@@ -546,21 +551,34 @@ themesRouter.post(
         await prisma.openTextTheme.deleteMany({ where: { campaignId } });
       }
 
-      const signalQuestionMap = new Map<string, string>();
+      const signalQuestionMap = new Map<string, { id: string; sourceType: 'Numeric Question' | 'Text Question' }>();
       for (const q of questionnaireThemesRaw) {
         const signal = (q.blockerSignal ?? '').trim();
         if (!signal) continue;
-        if (!signalQuestionMap.has(signal)) signalQuestionMap.set(signal, q.id);
+        if (!signalQuestionMap.has(signal)) {
+          signalQuestionMap.set(signal, {
+            id: q.id,
+            sourceType: sourceTypeForQuestion(q.questionType),
+          });
+        }
       }
 
       const themeIdByName = new Map<string, string>();
       let createdCount = 0;
       for (const themeName of questionnaireThemes) {
+        const source = signalQuestionMap.get(themeName);
         const existing = await prisma.openTextTheme.findFirst({
           where: { campaignId, themeName },
           select: { id: true },
         });
         if (existing) {
+          await prisma.openTextTheme.update({
+            where: { id: existing.id },
+            data: {
+              sourceQuestionId: source?.id ?? null,
+              sourceType: source?.sourceType ?? 'Text Question',
+            },
+          });
           themeIdByName.set(themeName, existing.id);
           continue;
         }
@@ -568,8 +586,8 @@ themesRouter.post(
           data: {
             campaignId,
             themeName,
-            sourceQuestionId: signalQuestionMap.get(themeName) ?? null,
-            sourceType: 'Text Question',
+            sourceQuestionId: source?.id ?? null,
+            sourceType: source?.sourceType ?? 'Text Question',
             respondentCount: 0,
             percentage: 0,
             status: 'MONITOR',
@@ -605,6 +623,7 @@ themesRouter.post(
           respondentCount: true,
           percentage: true,
           status: true,
+          sourceType: true,
         },
       });
 
@@ -626,6 +645,7 @@ themesRouter.post(
         respondentCount: number;
         percentage: number;
         tagCount: number;
+        sourceType: string | null;
       }> = updatedThemes
         .filter((t) => touchedThemeIds.has(t.id) || t.respondentCount > 0)
         .map((t) => ({
@@ -635,6 +655,7 @@ themesRouter.post(
           respondentCount: t.respondentCount,
           percentage: t.percentage,
           tagCount: t.respondentCount,
+          sourceType: t.sourceType,
         }));
 
       res.json({
@@ -1176,6 +1197,7 @@ themesRouter.post(
       const summaryThemes = summary.map((theme) => ({
         id: theme.id,
         themeName: theme.themeName,
+        sourceType: theme.sourceType,
         respondentCount: theme.respondentCount,
         percentage: theme.percentage,
         status: theme.status,

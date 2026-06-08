@@ -12,6 +12,18 @@ type Severity = 'P1' | 'P2' | 'P3' | 'P4';
 type SignalType = 'DORA' | 'SURVEY' | 'THEME';
 type ScoreValue = 'CONFIRMED' | 'PARTIAL' | 'NOT_CONFIRMED';
 
+const SDLC_PHASE_OPTIONS = [
+  'Planning',
+  'Coding',
+  'Review',
+  'Build',
+  'Test',
+  'Deploy',
+  'Operations',
+  'Collaboration',
+  'Cross-SDLC',
+] as const;
+
 interface DoraMetrics {
   leadTimeForChanges: string | null;
   deploymentFrequency: string | null;
@@ -143,7 +155,7 @@ const SCORE_OPTIONS: Array<{ value: ScoreValue; label: string }> = [
 const SIGNAL_COPY: Record<SignalType, { name: string; label: string }> = {
   SURVEY: { name: 'Survey signal', label: 'Survey Signal Confirmed?' },
   DORA: { name: 'Quantitative data', label: 'Quant Data Confirmed?' },
-  THEME: { name: 'Open text theme', label: 'Open Text Confirmed?' },
+  THEME: { name: 'Phase 2 evidence', label: 'Phase 2 Evidence Confirmed?' },
 };
 
 export default function TriangulationPage() {
@@ -458,6 +470,7 @@ function SignalTriangulationMatrix({ base, campaignId }: { base: string; campaig
           title: payload.title,
           description: payload.description || null,
           sourcePhase: 'TRIANGULATION',
+          sdlcPhase: payload.sdlcPhase,
           severity: severityFromSources(confirmedCount),
           evidenceSummary: payload.quantEvidence || doraSummary || null,
           aiFit: confirmedCount >= 2 ? 'CANDIDATE' : 'INVESTIGATE',
@@ -515,7 +528,7 @@ function SignalTriangulationMatrix({ base, campaignId }: { base: string; campaig
               Auto analyse Phase 2 themes and create validated blockers
             </h3>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-stone-700">
-              Pulls promoted and investigate themes, low survey dimensions, and journey signals into
+              Pulls all evidence-backed Phase 2 blocker themes, low survey dimensions, and journey signals into
               the triangulation matrix. These blockers feed the P5 Validated Blocker Registry and AI
               Feasibility Matrix automatically.
             </p>
@@ -553,7 +566,7 @@ function SignalTriangulationMatrix({ base, campaignId }: { base: string; campaig
                 <th className="px-4 py-3">Blocker</th>
                 <th className="px-4 py-3">Survey</th>
                 <th className="px-4 py-3">Quant</th>
-                <th className="px-4 py-3">Open Text</th>
+                <th className="px-4 py-3">Phase 2 Evidence</th>
                 <th className="px-4 py-3">Sources</th>
                 <th className="px-4 py-3">Priority</th>
                 <th className="px-4 py-3">Evidence</th>
@@ -586,7 +599,7 @@ function EmptyMatrixState() {
     <div className="rounded-lg border border-stone-300 bg-[#fffaf0] py-12 text-center shadow-sm">
       <div className="mx-auto mb-6 h-0 w-0 border-x-[10px] border-b-[18px] border-x-transparent border-b-[#d83b78]" />
       <p className="text-sm font-medium text-stone-600">
-        No blockers in triangulation matrix yet. Add promoted themes from Phase 2.
+        No blockers in triangulation matrix yet. Run auto analysis to add Phase 2 blocker themes.
       </p>
     </div>
   );
@@ -608,13 +621,14 @@ function MatrixRow({
   const [survey, setSurvey] = useState<ScoreValue>(scoreFromSignal(surveySignal));
   const [quant, setQuant] = useState<ScoreValue>(scoreFromSignal(doraSignal));
   const [openText, setOpenText] = useState<ScoreValue>(scoreFromSignal(themeSignal));
-  const [evidence, setEvidence] = useState(doraSignal?.evidenceDescription ?? row.evidenceSummary ?? '');
+  const defaultEvidence = buildEvidenceText(row, surveySignal, doraSignal, themeSignal);
+  const [evidence, setEvidence] = useState(defaultEvidence);
 
   useEffect(() => {
     setSurvey(scoreFromSignal(surveySignal));
     setQuant(scoreFromSignal(doraSignal));
     setOpenText(scoreFromSignal(themeSignal));
-    setEvidence(doraSignal?.evidenceDescription ?? row.evidenceSummary ?? '');
+    setEvidence(buildEvidenceText(row, surveySignal, doraSignal, themeSignal));
   }, [doraSignal, row.evidenceSummary, surveySignal, themeSignal]);
 
   const confirmedCount = countConfirmed(survey, quant, openText);
@@ -649,6 +663,11 @@ function MatrixRow({
     <tr className="align-top odd:bg-[#fffaf0] even:bg-[#f8f0df]">
       <td className="px-4 py-4">
         <div className="font-semibold text-stone-950">{row.title}</div>
+        {row.sourcePhase && (
+          <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#8a5b16]">
+            Source: {row.sourcePhase}
+          </div>
+        )}
         {row.description && <div className="mt-1 text-xs text-stone-500">{row.description}</div>}
       </td>
       <td className="px-4 py-4">
@@ -706,6 +725,7 @@ function MatrixRow({
 interface NewBlockerPayload {
   title: string;
   description: string;
+  sdlcPhase: string;
   survey: ScoreValue;
   quant: ScoreValue;
   openText: ScoreValue;
@@ -724,6 +744,7 @@ function NewBlockerForm({
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [sdlcPhase, setSdlcPhase] = useState<(typeof SDLC_PHASE_OPTIONS)[number]>('Cross-SDLC');
   const [survey, setSurvey] = useState<ScoreValue>('CONFIRMED');
   const [quant, setQuant] = useState<ScoreValue>('CONFIRMED');
   const [openText, setOpenText] = useState<ScoreValue>('CONFIRMED');
@@ -738,6 +759,7 @@ function NewBlockerForm({
         onSubmit({
           title: title.trim(),
           description: description.trim(),
+          sdlcPhase,
           survey,
           quant,
           openText,
@@ -746,6 +768,7 @@ function NewBlockerForm({
         });
         setTitle('');
         setDescription('');
+        setSdlcPhase('Cross-SDLC');
         setQuantEvidence('');
         setOpenTextEvidence('');
       }}
@@ -768,6 +791,18 @@ function NewBlockerForm({
           />
         </label>
         <label>
+          <FormLabel>SDLC Phase</FormLabel>
+          <select
+            value={sdlcPhase}
+            onChange={(event) => setSdlcPhase(event.target.value as (typeof SDLC_PHASE_OPTIONS)[number])}
+            className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
+          >
+            {SDLC_PHASE_OPTIONS.map((phase) => (
+              <option key={phase} value={phase}>{phase}</option>
+            ))}
+          </select>
+        </label>
+        <label>
           <FormLabel>Survey Signal Confirmed?</FormLabel>
           <ScoreSelect value={survey} onChange={setSurvey} />
         </label>
@@ -776,7 +811,7 @@ function NewBlockerForm({
           <ScoreSelect value={quant} onChange={setQuant} />
         </label>
         <label>
-          <FormLabel>Open Text Confirmed?</FormLabel>
+          <FormLabel>Phase 2 Evidence Confirmed?</FormLabel>
           <ScoreSelect value={openText} onChange={setOpenText} confirmedLabel="Confirmed (>=30%)" />
         </label>
       </div>
@@ -790,11 +825,11 @@ function NewBlockerForm({
         />
       </label>
       <label className="mt-4 block">
-        <FormLabel>Open Text Evidence</FormLabel>
+        <FormLabel>Phase 2 Evidence</FormLabel>
         <input
           value={openTextEvidence}
           onChange={(event) => setOpenTextEvidence(event.target.value)}
-          placeholder="e.g. Theme appeared in 35% of Phase 2 responses"
+          placeholder="e.g. Numeric question, open-text question, or cross-dimension metric evidence from Phase 2"
           className="w-full rounded-md border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-950 outline-none focus:border-[#17806d] focus:ring-2 focus:ring-[#17806d]/15"
         />
       </label>
@@ -891,6 +926,29 @@ function severityFromSources(sourceCount: number): Severity {
   if (sourceCount === 2) return 'P2';
   if (sourceCount === 1) return 'P3';
   return 'P4';
+}
+
+function buildEvidenceText(
+  row: MatrixBlocker,
+  surveySignal: Signal | undefined,
+  doraSignal: Signal | undefined,
+  themeSignal: Signal | undefined,
+): string {
+  const lines = [
+    row.sourcePhase ? `Blocker source: ${row.sourcePhase}` : null,
+    row.evidenceSummary,
+    surveySignal
+      ? `Numeric question source: ${surveySignal.signalName}${surveySignal.evidenceValue ? ` - ${surveySignal.evidenceValue}` : ''}${surveySignal.evidenceDescription ? `. ${surveySignal.evidenceDescription}` : ''}`
+      : null,
+    doraSignal
+      ? `Quantitative metric source: ${doraSignal.signalName}${doraSignal.evidenceValue ? ` - ${doraSignal.evidenceValue}` : ''}${doraSignal.evidenceDescription ? `. ${doraSignal.evidenceDescription}` : ''}`
+      : null,
+    themeSignal
+      ? `Phase 2 source: ${themeSignal.signalName}${themeSignal.evidenceValue ? ` - ${themeSignal.evidenceValue}` : ''}${themeSignal.evidenceDescription ? `. ${themeSignal.evidenceDescription}` : ''}`
+      : null,
+  ].filter((line): line is string => Boolean(line && line.trim()));
+
+  return [...new Set(lines)].join('\n');
 }
 
 function signalBody(type: SignalType, score: ScoreValue, evidence: string | null) {
