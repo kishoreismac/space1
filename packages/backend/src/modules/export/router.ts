@@ -22,18 +22,19 @@ function toCsv(headers: string[], rows: unknown[][]): string {
 function phase2BlockerWhere(campaignId: string) {
   return {
     campaignId,
-    NOT: {
-      OR: [
-        { evidenceSummary: { startsWith: 'Cross-dimension metric evidence:' } },
-        {
-          AND: [
-            { title: { startsWith: 'Low ' } },
-            { evidenceSummary: { contains: 'survey mean' } },
-          ],
-        },
-      ],
-    },
+    sourcePhase: { startsWith: 'PHASE 2' },
   };
+}
+
+async function currentPhase2ThemeNames(campaignId: string): Promise<Set<string>> {
+  const themes = await prisma.openTextTheme.findMany({
+    where: {
+      campaignId,
+      OR: [{ respondentCount: { gt: 0 } }, { tags: { some: {} } }],
+    },
+    select: { themeName: true },
+  });
+  return new Set(themes.map((theme) => theme.themeName.toLowerCase()));
 }
 
 function sendCsv(res: import('express').Response, filename: string, body: string) {
@@ -93,11 +94,13 @@ exportRouter.get('/blockers.csv', async (req, res, next) => {
     const { companyId, campaignId } = req.params as { companyId: string; campaignId: string };
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
-    const blockers = await prisma.blocker.findMany({
+    const blockersRaw = await prisma.blocker.findMany({
       where: phase2BlockerWhere(campaignId),
       include: { feasibility: true, _count: { select: { signals: true } } },
       orderBy: [{ severity: 'asc' }, { createdAt: 'desc' }],
     });
+    const phase2ThemeNames = await currentPhase2ThemeNames(campaignId);
+    const blockers = blockersRaw.filter((b) => phase2ThemeNames.has(b.title.toLowerCase()));
     const rows = blockers.map((b) => [
       b.id,
       b.title,
@@ -132,7 +135,7 @@ exportRouter.get('/themes.csv', async (req, res, next) => {
     assertCompanyAccess(req.auth, companyId);
     await loadCampaign(companyId, campaignId);
     const themes = await prisma.openTextTheme.findMany({
-      where: { campaignId, NOT: { sourceType: 'Cross-Dimension Metric' } },
+      where: { campaignId },
       include: { _count: { select: { tags: true } } },
       orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }],
     });

@@ -29,18 +29,19 @@ const DIMENSION_NAMES: Record<DimensionCode, string> = {
 function phase2BlockerWhere(campaignId: string) {
   return {
     campaignId,
-    NOT: {
-      OR: [
-        { evidenceSummary: { startsWith: 'Cross-dimension metric evidence:' } },
-        {
-          AND: [
-            { title: { startsWith: 'Low ' } },
-            { evidenceSummary: { contains: 'survey mean' } },
-          ],
-        },
-      ],
-    },
+    sourcePhase: { startsWith: 'PHASE 2' },
   };
+}
+
+async function currentPhase2ThemeNames(campaignId: string): Promise<Set<string>> {
+  const themes = await prisma.openTextTheme.findMany({
+    where: {
+      campaignId,
+      OR: [{ respondentCount: { gt: 0 } }, { tags: { some: {} } }],
+    },
+    select: { themeName: true },
+  });
+  return new Set(themes.map((theme) => theme.themeName.toLowerCase()));
 }
 
 function previousAvgFor(
@@ -156,7 +157,7 @@ reportRouter.get('/', async (req, res, next) => {
 
     // ── Themes ───────────────────────────────────────────────────────
     const themes = await prisma.openTextTheme.findMany({
-      where: { campaignId, NOT: { sourceType: 'Cross-Dimension Metric' } },
+      where: { campaignId },
       orderBy: [{ status: 'asc' }, { respondentCount: 'desc' }],
     });
 
@@ -188,10 +189,12 @@ reportRouter.get('/', async (req, res, next) => {
       }));
 
     // ── Blockers + Roadmap ───────────────────────────────────────────
-    const blockerRows = await prisma.blocker.findMany({
+    const blockerRowsRaw = await prisma.blocker.findMany({
       where: phase2BlockerWhere(campaignId),
       include: { feasibility: true, _count: { select: { signals: true } } },
     });
+    const phase2ThemeNames = await currentPhase2ThemeNames(campaignId);
+    const blockerRows = blockerRowsRaw.filter((b) => phase2ThemeNames.has(b.title.toLowerCase()));
     blockerRows.sort(
       (a, b) =>
         (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9),
