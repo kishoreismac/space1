@@ -620,6 +620,42 @@ function SurveyFlow({ token, context }: { token: string; context: PublicSurveyCo
               {errorMsg}
             </p>
           )}
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.75rem',
+              justifyContent: 'center',
+              marginBottom: '1rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="submit-btn"
+              style={{
+                background: 'var(--ink)',
+                color: '#fff',
+                padding: '.65rem 1.2rem',
+                fontSize: 12,
+              }}
+            >
+              Download as CSV
+            </button>
+            <button
+              type="button"
+              onClick={exportJson}
+              className="submit-btn"
+              style={{
+                background: 'var(--ink)',
+                color: '#fff',
+                padding: '.65rem 1.2rem',
+                fontSize: 12,
+              }}
+            >
+              Download as JSON
+            </button>
+          </div>
           <button
             className="submit-btn"
             onClick={handleSubmit}
