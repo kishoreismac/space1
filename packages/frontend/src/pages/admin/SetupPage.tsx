@@ -108,7 +108,7 @@ export default function SetupPage() {
     queryFn: () => api<CompaniesResponse>('/api/companies'),
   });
 
-  const items = companies.data?.items ?? [];
+  const items = (companies.data?.items ?? []).filter((c) => c.status !== 'ARCHIVED');
   const selectedCompany = items.find((c) => c.id === selected) ?? items[0] ?? null;
   const selectedId = selectedCompany?.id ?? null;
 
@@ -178,7 +178,11 @@ export default function SetupPage() {
       <section className="lg:col-span-2 space-y-6">
         {selectedCompany ? (
           <>
-            <CompanyDetailCard company={selectedCompany} canEdit={role === 'SUPER_ADMIN' || role === 'COMPANY_ADMIN'} />
+            <CompanyDetailCard
+              company={selectedCompany}
+              canEdit={role === 'SUPER_ADMIN' || role === 'COMPANY_ADMIN'}
+              canDelete={role === 'SUPER_ADMIN'}
+            />
             <TeamsPanel companyId={selectedCompany.id} canEdit={role === 'SUPER_ADMIN' || role === 'COMPANY_ADMIN'} />
             <CampaignSetupSection companyId={selectedCompany.id} companyName={selectedCompany.name} canEdit={role === 'SUPER_ADMIN' || role === 'COMPANY_ADMIN' || role === 'ANALYST'} />
           </>
@@ -247,7 +251,15 @@ function CompanyCreateForm({
   );
 }
 
-function CompanyDetailCard({ company, canEdit }: { company: Company; canEdit: boolean }) {
+function CompanyDetailCard({
+  company,
+  canEdit,
+  canDelete,
+}: {
+  company: Company;
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(company.name);
@@ -262,19 +274,49 @@ function CompanyDetailCard({ company, canEdit }: { company: Company; canEdit: bo
       setEditing(false);
     },
   });
+  const remove = useMutation({
+    mutationFn: () => api<void>(`/api/companies/${company.id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['teams', company.id] });
+      qc.invalidateQueries({ queryKey: ['campaigns', company.id] });
+    },
+  });
+
+  function confirmDelete() {
+    const ok = window.confirm(
+      `Delete ${company.name}? This will archive the company and hide it from active use.`,
+    );
+    if (ok) remove.mutate();
+  }
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-5">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold">{company.name}</h2>
-        {canEdit && (
-          <button
-            onClick={() => setEditing((v) => !v)}
-            className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
-          >
-            {editing ? 'Cancel' : 'Edit'}
-          </button>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+        <div>
+          <h2 className="font-semibold leading-tight">{company.name}</h2>
+          <p className="text-xs text-slate-500 mt-1">Company profile and administrative controls</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <button
+              onClick={() => setEditing((v) => !v)}
+              className="text-xs px-2.5 py-1.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              {editing ? 'Cancel' : 'Edit'}
+            </button>
+          )}
+          {canDelete && company.status !== 'ARCHIVED' && (
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={remove.isPending}
+              className="text-xs px-2.5 py-1.5 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              {remove.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          )}
+        </div>
       </div>
       {editing ? (
         <form
@@ -316,18 +358,26 @@ function CompanyDetailCard({ company, canEdit }: { company: Company; canEdit: bo
           >
             {update.isPending ? 'Saving…' : 'Save'}
           </button>
+          {remove.error && (
+            <div className="text-xs text-red-600">{(remove.error as Error).message}</div>
+          )}
         </form>
       ) : (
-        <dl className="grid grid-cols-2 gap-2 text-sm">
-          <dt className="text-slate-500">Industry</dt>
-          <dd>{company.industry ?? '—'}</dd>
-          <dt className="text-slate-500">Contact</dt>
-          <dd>{company.contactEmail ?? '—'}</dd>
-          <dt className="text-slate-500">Status</dt>
-          <dd>{company.status}</dd>
-          <dt className="text-slate-500">Named reporting</dt>
-          <dd>{company.allowNamedReporting ? 'Allowed' : 'Anonymous only'}</dd>
-        </dl>
+        <>
+          <dl className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-x-4 gap-y-2 text-sm">
+            <dt className="text-slate-500">Industry</dt>
+            <dd className="text-slate-900">{company.industry ?? '—'}</dd>
+            <dt className="text-slate-500">Contact</dt>
+            <dd className="text-slate-900">{company.contactEmail ?? '—'}</dd>
+            <dt className="text-slate-500">Status</dt>
+            <dd className="text-slate-900">{company.status}</dd>
+            <dt className="text-slate-500">Named reporting</dt>
+            <dd className="text-slate-900">{company.allowNamedReporting ? 'Allowed' : 'Anonymous only'}</dd>
+          </dl>
+          {remove.error && (
+            <div className="text-xs text-red-600 mt-3">{(remove.error as Error).message}</div>
+          )}
+        </>
       )}
     </div>
   );

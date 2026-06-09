@@ -105,6 +105,34 @@ describe('bulk results upload', () => {
     expect(r.body.created).toBe(2);
   });
 
+  it('imports long-format CSV downloaded from the survey page', async () => {
+    const csv = [
+      'participantName,teamId,teamName,roleLabel,yearsAtCompany,primaryTechnology,company,campaign,cycle,questionNumber,questionText,dimensionCode,questionType,rawValue,textValue',
+      'Taylor Demo,,Platform,Senior Engineer,3-5,TypeScript,Demo Co,Bulk Pulse,Q2-2025,1,Question 1,S,LIKERT,4,',
+      'Taylor Demo,,Platform,Senior Engineer,3-5,TypeScript,Demo Co,Bulk Pulse,Q2-2025,2,Question 2,S,LIKERT,3,',
+      'Taylor Demo,,Platform,Senior Engineer,3-5,TypeScript,Demo Co,Bulk Pulse,Q2-2025,10,Open question,S,OPEN_TEXT,,Build pipelines are slow',
+    ].join('\n');
+
+    const r = await request(app)
+      .post(`/api/companies/${companyId}/campaigns/${campaignId}/upload/bulk`)
+      .set('authorization', `Bearer ${accessToken}`)
+      .send({ csv });
+
+    expect(r.status).toBe(201);
+    expect(r.body.created).toBe(1);
+    expect(r.body.answerCount).toBe(3);
+
+    const imported = await prisma.submission.findFirst({
+      where: { campaignId, roleLabel: 'Senior Engineer', primaryTechnology: 'TypeScript' },
+      include: { answers: { include: { question: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(imported).toBeTruthy();
+    expect(imported?.yearsAtCompany).toBe('3-5');
+    expect(imported?.answers.find((a) => a.question.questionNumber === 10)?.textValue)
+      .toBe('Build pipelines are slow');
+  });
+
   it('rejects empty rows', async () => {
     const r = await request(app)
       .post(`/api/companies/${companyId}/campaigns/${campaignId}/upload/bulk`)

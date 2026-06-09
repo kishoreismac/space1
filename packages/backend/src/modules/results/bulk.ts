@@ -124,8 +124,61 @@ function csvToRows(csv: string): NormalisedRow[] {
   const { headers, rows } = parseCsv(csv);
   if (headers.length === 0) return [];
   const lower = headers.map((h) => h.toLowerCase());
-  const idx = (name: string) => lower.indexOf(name);
-  const get = (r: Record<string, string>, name: string) => r[headers[idx(name)] ?? ''] ?? null;
+  const has = (name: string) => lower.includes(name.toLowerCase());
+  const idx = (name: string) => lower.indexOf(name.toLowerCase());
+  const get = (r: Record<string, string>, name: string) => {
+    const i = idx(name);
+    return i >= 0 ? r[headers[i]!] ?? null : null;
+  };
+  const getAny = (r: Record<string, string>, names: string[]) => {
+    for (const name of names) {
+      const value = get(r, name);
+      if (value) return value;
+    }
+    return null;
+  };
+
+  if (has('questionNumber') && (has('rawValue') || has('textValue'))) {
+    const grouped = new Map<string, NormalisedRow>();
+    for (const r of rows) {
+      const questionNumber = Number(get(r, 'questionNumber'));
+      if (!Number.isFinite(questionNumber)) continue;
+      const participantName = getAny(r, ['participantName', 'name']);
+      const team = getAny(r, ['teamName', 'team']);
+      const role = getAny(r, ['roleLabel', 'role']);
+      const years = getAny(r, ['yearsAtCompany', 'years']);
+      const primary = getAny(r, ['primaryTechnology', 'primary', 'primary language']);
+      const key = [
+        participantName ?? '',
+        team ?? '',
+        role ?? '',
+        years ?? '',
+        primary ?? '',
+      ].join('|');
+
+      let row = grouped.get(key);
+      if (!row) {
+        row = {
+          team,
+          role,
+          name: participantName,
+          years,
+          primary,
+          answers: {},
+        };
+        grouped.set(key, row);
+      }
+
+      const rawValue = (get(r, 'rawValue') ?? '').trim();
+      const textValue = (get(r, 'textValue') ?? '').trim();
+      const value = rawValue !== '' ? rawValue : textValue;
+      if (value === '') continue;
+      const asNum = Number(value);
+      row.answers[String(questionNumber)] =
+        Number.isFinite(asNum) && !/[a-zA-Z]/.test(value) ? asNum : value;
+    }
+    return [...grouped.values()];
+  }
 
   const qHeaders = headers.filter((h) => /^q\d+$/i.test(h));
 
