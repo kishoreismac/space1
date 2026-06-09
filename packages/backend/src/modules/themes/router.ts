@@ -178,7 +178,7 @@ async function normalizeCrossDimensionMetricThemes(campaignId: string): Promise<
 
 async function tryNormalizeCrossDimensionMetricThemes(campaignId: string): Promise<void> {
   try {
-    await tryNormalizeCrossDimensionMetricThemes(campaignId);
+    await normalizeCrossDimensionMetricThemes(campaignId);
   } catch (err) {
     console.warn(`[themes] cross-dimension normalization skipped for ${campaignId}:`, err);
   }
